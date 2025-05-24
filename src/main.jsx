@@ -4,7 +4,7 @@ import App from './App.jsx'; // Main App layout component
 import './index.css';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import RoleSelectionScreen from './RoleSelectionScreen.jsx';
-import ControllerScreen from './ControllerScreen.jsx';
+import ControllerScreen from './ControllerScreen.jsx'; // Re-enable Controller import
 import MonitorScreen from './MonitorScreen.jsx';
 import CameraScreen from './CameraScreen.jsx';
 
@@ -33,7 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/" element={<App />}>
           <Route index element={<RoleSelectionScreen />} />
-          <Route path="controller" element={<ControllerScreen />} />
+          <Route path="controller" element={<ControllerScreen />} /> {/* Re-enable Controller route */}
           <Route path="monitor" element={<MonitorScreen />} />
           <Route path="camera" element={<CameraScreen />} />
           {/* Add other nested routes here if App.jsx is a layout for them */}
