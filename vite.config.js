@@ -2,17 +2,17 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'Fest React App',
-        short_name: 'FestReact',
-        description: 'My Awesome React App for Fest',
+        name: 'PWA Video Switcher',
+        short_name: 'VideoSwitcher',
+        description: 'PWA for switching video sources',
         theme_color: '#ffffff',
         icons: [
           {
