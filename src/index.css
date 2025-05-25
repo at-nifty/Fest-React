@@ -1,0 +1,325 @@
+/* Global Resets and Base Styles */
+html {
+  box-sizing: border-box;
+  font-size: 16px;
+}
+
+*, *:before, *:after {
+  box-sizing: inherit;
+}
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  padding: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+#root {
+  width: 100%;
+  padding: 15px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  color: #2c3e50; /* Darker, more professional heading color */
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.screen-title {
+  font-size: 1.8rem; /* Adjusted size */
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 3px solid #007bff; /* Accent border */
+  color: #007bff;
+}
+
+/* Buttons */
+button, .button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 12px 20px; /* Slightly larger padding */
+  border-radius: 6px; /* Softer radius */
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 5px;
+  transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  display: inline-flex; /* For aligning items if icon is added */
+  align-items: center;
+  justify-content: center;
+  text-decoration: none; /* For label-as-button */
+}
+
+button:hover, .button:hover {
+  background-color: #0056b3;
+  box-shadow: 0 2px 8px rgba(0, 86, 179, 0.3);
+}
+
+button:disabled, .button:disabled {
+  background-color: #ced4da; /* Lighter disabled color */
+  color: #6c757d;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Input Fields */
+input[type="text"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 10px; /* Consistent margin */
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+input[type="text"]:focus,
+input[type="file"]:focus,
+select:focus,
+textarea:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  outline: none;
+}
+
+/* Custom styled file input button via label */
+label.button input[type="file"] {
+    display: none; /* Hide the default file input */
+}
+
+/* Containers & Layout */
+.container {
+  padding: 15px;
+  margin-bottom: 20px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.container h2 {
+    font-size: 1.4rem;
+    margin-bottom: 15px;
+}
+.container h3 {
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+.button-group {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 10px; /* Spacing between buttons */
+  flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+}
+
+.info-text {
+  font-size: 0.9rem;
+  color: #555;
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+.error-text {
+  font-size: 0.9rem;
+  color: #dc3545; /* Bootstrap danger red */
+  font-weight: bold;
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+/* Video styling */
+video {
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  background-color: #000;
+  display: block; /* Remove extra space below */
+  max-width: 100%; /* Responsive by default */
+  height: auto;
+}
+
+/* List styling */
+ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+li.device-item {
+    background-color: #fff;
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+li.device-item:hover {
+    background-color: #f8f9fa;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+li.device-item strong {
+    margin-right: 10px;
+}
+
+/* Status Indicators (simple example) */
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+.status-registered { background-color: #ffc107; } /* Yellow */
+.status-connecting { background-color: #007bff; } /* Blue */
+.status-connected { background-color: #28a745; } /* Green */
+.status-error { background-color: #dc3545; } /* Red */
+.status-disconnected { background-color: #6c757d; } /* Gray */
+
+/* General Status Badge Styling */
+.status-badge {
+  padding: 0.25em 0.6em;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.375rem; /* Slightly larger radius for badges */
+  display: inline-block; /* So it doesn't take full width */
+}
+
+.status-success {
+  background-color: #28a745; /* Green */
+  color: white;
+}
+
+.status-error {
+  background-color: #dc3545; /* Red */
+  color: white;
+}
+
+.status-pending {
+  background-color: #ffc107; /* Yellow */
+  color: #212529; /* Dark text for yellow */
+}
+
+.status-info {
+  background-color: #17a2b8; /* Blue */
+  color: white;
+}
+
+.status-unknown {
+  background-color: #6c757d; /* Gray */
+  color: white;
+}
+
+/* Styling for card-like elements, can be used by device-card */
+.card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px; /* Space between cards */
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.card h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1.2rem;
+  color: #007bff;
+}
+
+.card p {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.connection-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Responsive grid */
+  gap: 20px;
+}
+
+/* Spinner for loading states */
+.spinner-border {
+  display: inline-block;
+  width: 1rem; /* Adjust size as needed */
+  height: 1rem;
+  vertical-align: text-bottom;
+  border: .2em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  -webkit-animation: spinner-border .75s linear infinite;
+  animation: spinner-border .75s linear infinite;
+  margin-left: 5px;
+}
+
+.spinner-border-sm {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-width: .15em;
+}
+
+@-webkit-keyframes spinner-border {
+  to { -webkit-transform: rotate(360deg); }
+}
+
+@keyframes spinner-border {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  #root {
+    margin: 10px;
+    padding: 10px;
+  }
+  .screen-title {
+    font-size: 1.5rem;
+  }
+  button, .button {
+    padding: 10px 15px;
+    font-size: 0.95rem;
+  }
+  .button-group {
+      flex-direction: column;
+  }
+  .button-group button, .button-group .button {
+      width: 100%;
+      margin-bottom: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+    .container h2 { font-size: 1.2rem; }
+    .container h3 { font-size: 1.1rem; }
+} 

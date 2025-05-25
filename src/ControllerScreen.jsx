@@ -1,13 +1,6 @@
-import React from 'react';
+import { Navigate } from 'react-router-dom';
 
-function ControllerScreen() {
-  return (
-    <div>
-      <h1>Controller Screen</h1>
-      <div>Monitor List Display Area</div>
-      {/* Camera selection dropdown will be added here later */}
-    </div>
-  );
+// This file exists for backward compatibility - redirects to the correct location
+export default function ControllerScreen() {
+  return <Navigate to="/controller" replace />;
 }
-
-export default ControllerScreen; 

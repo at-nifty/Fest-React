@@ -1,13 +1,6 @@
-import React from 'react';
+import { Navigate } from 'react-router-dom';
 
-function MonitorScreen() {
-  return (
-    <div>
-      <h1>Monitor Screen</h1>
-      <div>Video Display Area</div>
-      <video style={{ width: '100%', backgroundColor: 'black' }} playsInline autoPlay muted loop></video>
-    </div>
-  );
+// This file exists for backward compatibility - redirects to the correct location
+export default function MonitorScreen() {
+  return <Navigate to="/monitor" replace />;
 }
-
-export default MonitorScreen; 
