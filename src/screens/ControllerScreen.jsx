@@ -3,242 +3,242 @@ import { useAppStore } from '../store';
 
 const CTRL_LOG_PREFIX = "[CtrlScreen]";
 
-// Keep existing commonStyles but add new styles for tabs and operation view
 const commonStyles = {
-  // ... (keep existing styles)
-  
-  // Add new styles
-  tabContainer: {
+  pageContainer: {
+    width: '100vw',
+    minHeight: '100vh',
+    padding: '0',
+    boxSizing: 'border-box',
     display: 'flex',
-    gap: '2px',
-    backgroundColor: '#e0e0e0',
-    padding: '2px',
-    borderRadius: '8px',
-    marginBottom: '20px'
+    flexDirection: 'column',
+    backgroundColor: '#f0f2f5', 
+    gap: '0'
   },
-  tab: {
-    padding: '10px 20px',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    backgroundColor: '#f0f0f0',
-    color: '#666',
-    flex: 1,
-    textAlign: 'center',
-    transition: 'all 0.2s ease'
-  },
-  activeTab: {
-    backgroundColor: '#fff',
-    color: '#007bff',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-  },
-  previewGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-    gap: '15px',
-    padding: '15px'
-  },
-  previewCard: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    overflow: 'hidden',
+  header: {
+    padding: '15px 20px',
+    backgroundColor: '#ffffff',
+    borderRadius: '0',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    cursor: 'pointer',
-    transition: 'transform 0.2s ease',
-    position: 'relative'
+    width: '100vw',
+    boxSizing: 'border-box',
   },
-  previewVideo: {
-    width: '100%',
-    aspectRatio: '16/9',
-    backgroundColor: '#000',
-    objectFit: 'cover'
-  },
-  previewLabel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: '8px',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    color: '#fff',
-    fontSize: '0.9em'
-  },
-  previewOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,128,255,0.3)',
-    display: 'none',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#fff',
-    fontWeight: 'bold'
-  },
-  monitorPanel: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    padding: '15px',
-    marginBottom: '15px'
-  },
-  monitorTitle: {
+  mainContentArea: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    gap: '20px',
+    padding: '20px',
+    flex: 1
+  },
+  title: {
+    margin: '0 0 10px 0',
+    color: '#333',
+    fontSize: '1.8em'
+  },
+  status: {
+    marginBottom: '5px',
+    fontWeight: 'bold',
+    fontSize: '1.1em'
+  },
+  error: {
+    color: '#d9534f',
+    fontWeight: 'bold',
     marginBottom: '10px'
   },
-  currentSource: {
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: '8px',
+    padding: '20px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '15px'
+  },
+  video: {
+    width: '100%',
+    maxWidth: '720px',
+    height: 'auto',
+    borderRadius: '6px',
+    border: '1px solid #ddd',
+    backgroundColor: '#000',
+    display: 'block',
+    margin: '0 auto 20px auto'
+  },
+  textarea: {
+    width: '100%',
+    minHeight: '100px',
+    padding: '10px',
+    border: '1px solid #ccc',
+    borderRadius: '4px',
+    fontFamily: 'monospace',
     fontSize: '0.9em',
-    color: '#666',
-    fontStyle: 'italic'
-  }
+    boxSizing: 'border-box'
+  },
+  button: {
+    padding: '10px 15px',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    backgroundColor: '#007bff',
+    color: 'white',
+    fontSize: '0.95em',
+    transition: 'background-color 0.2s ease'
+  },
+  buttonDisabled: {
+    backgroundColor: '#6c757d',
+    cursor: 'not-allowed'
+  },
+  buttonGroup: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+    alignItems: 'center'
+  },
+  label: {
+    display: 'block',
+    marginBottom: '8px',
+    fontWeight: 'bold',
+    color: '#555'
+  },
+  deviceListContainer: {
+    display: 'flex',
+    flexDirection: 'row',
+    gap: '20px',
+    width: '100%'
+  },
+  deviceColumn: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px'
+  },
+  deviceListItem: {
+    padding: '15px',
+    border: '1px solid #e0e0e0',
+    borderRadius: '8px',
+    backgroundColor: '#f9f9f9',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px'
+  },
+  selectedDevice: { backgroundColor: '#e6f7ff' },
+  selectedMonitorDevice: { backgroundColor: '#e0f7fa' },
+  statusBadge: {
+    padding: '3px 8px',
+    borderRadius: '12px',
+    fontSize: '0.8em',
+    color: 'white',
+    display: 'inline-block',
+    marginLeft: '10px'
+  },
+  smallId: { fontSize: '0.8em', color: '#777', marginTop: '5px' }
+};
+
+const getStatusColor = (status) => {
+  if (!status) return '#6c757d';
+  if (status.includes('connected') || status.includes('streaming')) return '#28a745'; 
+  if (status.includes('ready')) return '#17a2b8';    
+  if (status.includes('error')) return '#dc3545';
+  if (status.includes('processing') || status.includes('preparing')) return '#ffc107'; 
+  if (status.startsWith('pc_state_')) return '#6c757d'; 
+  return '#007bff'; 
 };
 
 function ControllerScreen() {
-  // Keep existing state and refs
-  const [activeTab, setActiveTab] = useState('connection'); // 'connection' or 'operation'
+  const {
+    cameras, monitors,
+    addCamera, setCameraAnswer, updateCameraStatus, getCameraById,
+    addMonitorPlaceholder, 
+    selectCamera, selectedCameraId, // Only used for preview now
+    setOfferForMonitor, setMonitorAnswer, updateMonitorStatus, getMonitorById
+  } = useAppStore();
+
+  const [newCamOfferInput, setNewCamOfferInput] = useState('');
+  const [expandedCameraJson, setExpandedCameraJson] = useState(null);
+  const [expandedMonitorJson, setExpandedMonitorJson] = useState(null);
+  const [monitorSourceMap, setMonitorSourceMap] = useState({});
   
-  // ... (keep other existing state declarations)
+  const [currentMonitorIdForOffer, setCurrentMonitorIdForOffer] = useState(null);
+  const [currentMonitorIdForAnswer, setCurrentMonitorIdForAnswer] = useState(null);
+  const [answerFromMonitorInput, setAnswerFromMonitorInput] = useState('');
 
-  // Tabs component
-  const renderTabs = () => (
-    <div style={commonStyles.tabContainer}>
-      <button 
-        style={{
-          ...commonStyles.tab,
-          ...(activeTab === 'connection' && commonStyles.activeTab)
-        }}
-        onClick={() => setActiveTab('connection')}
-      >
-        Connection Setup
-      </button>
-      <button 
-        style={{
-          ...commonStyles.tab,
-          ...(activeTab === 'operation' && commonStyles.activeTab)
-        }}
-        onClick={() => setActiveTab('operation')}
-        disabled={!monitors.some(m => m.status === 'connected_to_controller')}
-      >
-        Operation Mode
-      </button>
-    </div>
-  );
+  const cameraPcRefs = useRef({});
+  const cameraStreamRefs = useRef({});
+  const monitorPcRefs = useRef({});
 
-  // Operation view - OBS-like interface
-  const renderOperationView = () => {
-    const connectedMonitors = monitors.filter(m => 
-      m.status === 'connected_to_controller' || m.status.startsWith('pc_state_connected')
-    );
+  const [status, setStatus] = useState('Controller Idle');
+  const [error, setError] = useState('');
 
-    return (
-      <>
-        {connectedMonitors.map(monitor => (
-          <div key={monitor.id} style={commonStyles.monitorPanel}>
-            <div style={commonStyles.monitorTitle}>
-              <h3>{monitor.name}</h3>
-              <span style={commonStyles.currentSource}>
-                Source: {monitorSourceMap[monitor.id] ? 
-                  getCameraById(monitorSourceMap[monitor.id])?.name || 'Unknown' : 
-                  'No Signal'}
-              </span>
-            </div>
-            <div style={commonStyles.previewGrid}>
-              {/* No Signal preview */}
-              <div 
-                style={commonStyles.previewCard}
-                onClick={() => switchMonitorCamera(monitor.id, null)}
-              >
-                <canvas 
-                  width="320" 
-                  height="180" 
-                  style={commonStyles.previewVideo}
-                  ref={el => {
-                    if (el) {
-                      const ctx = el.getContext('2d');
-                      if (ctx) {
-                        ctx.fillStyle = 'black';
-                        ctx.fillRect(0, 0, el.width, el.height);
-                        ctx.fillStyle = 'white';
-                        ctx.font = '16px Arial';
-                        ctx.textAlign = 'center';
-                        ctx.fillText('No Signal', el.width/2, el.height/2);
-                      }
-                    }
-                  }}
-                />
-                <div style={commonStyles.previewLabel}>
-                  No Signal
-                </div>
-                {!monitorSourceMap[monitor.id] && (
-                  <div style={{...commonStyles.previewOverlay, display: 'flex'}}>
-                    ✓ ACTIVE
-                  </div>
-                )}
-              </div>
-
-              {/* Camera previews */}
-              {cameras
-                .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
-                .map(camera => {
-                  const stream = cameraStreamRefs.current[camera.id];
-                  const isActive = monitorSourceMap[monitor.id] === camera.id;
-
-                  return (
-                    <div 
-                      key={camera.id}
-                      style={commonStyles.previewCard}
-                      onClick={() => switchMonitorCamera(monitor.id, camera.id)}
-                    >
-                      <video
-                        ref={el => {
-                          if (el && el.srcObject !== stream) {
-                            el.srcObject = stream;
-                          }
-                        }}
-                        autoPlay
-                        playsInline
-                        muted
-                        style={commonStyles.previewVideo}
-                      />
-                      <div style={commonStyles.previewLabel}>
-                        {camera.name}
-                      </div>
-                      {isActive && (
-                        <div style={{...commonStyles.previewOverlay, display: 'flex'}}>
-                          ✓ ACTIVE
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              }
-            </div>
-          </div>
-        ))}
-      </>
-    );
+  const createEmptyMediaStream = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('No Signal', canvas.width/2, canvas.height/2);
+    }
+    const videoStream = canvas.captureStream(1);
+    const audioContext = new AudioContext();
+    const oscillator = audioContext.createOscillator();
+    const dest = oscillator.connect(audioContext.createMediaStreamDestination());
+    oscillator.start();
+    const [videoTrack] = videoStream.getVideoTracks();
+    const [audioTrack] = dest.stream.getAudioTracks();
+    return new MediaStream([videoTrack, audioTrack]);
   };
 
-  // Keep existing utility functions and handlers...
+  const switchMonitorCamera = useCallback(async (monitorId, cameraId) => {
+    const monitor = getMonitorById(monitorId);
+    if (!monitor) return;
 
-  return (
-    <div style={commonStyles.pageContainer}>
-      <header style={commonStyles.header}>
-        <h1 style={commonStyles.title}>Controller Dashboard</h1>
-        <p style={commonStyles.status}>Controller Status: {status}</p>
-        {error && <p style={commonStyles.error}>Error: {error}</p>}
-      </header>
+    const pc = monitorPcRefs.current[monitorId];
+    if (!pc || !monitor.status.includes('connected')) return;
 
-      <div style={commonStyles.mainContentArea}>
-        {renderTabs()}
+    const newStream = cameraId ? cameraStreamRefs.current[cameraId] : createEmptyMediaStream();
+    if (!newStream) return;
 
-        {activeTab === 'operation' ? (
-          renderOperationView()
-        ) : (
-          <>
-            {/* Existing connection view */}
+    const senders = pc.getSenders();
+    const tracks = newStream.getTracks();
+    
+    // Replace tracks for each sender
+    for (let i = 0; i < senders.length; i++) {
+      if (tracks[i]) {
+        try {
+          await senders[i].replaceTrack(tracks[i]);
+        } catch (err) {
+          console.error(CTRL_LOG_PREFIX + " Error replacing track for monitor " + monitorId, err);
+          return;
+        }
+      }
+    }
+
+    setMonitorSourceMap(prev => ({ ...prev, [monitorId]: cameraId }));
+    setStatus(`Switched ${monitor.name} to ${cameraId ? getCameraById(cameraId)?.name || 'unknown camera' : 'No Signal'}`);
+  }, [getCameraById, getMonitorById]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(cameraPcRefs.current).forEach(pc => pc?.close());
+      Object.values(monitorPcRefs.current).forEach(pc => pc?.close());
+      cameraPcRefs.current = {};
+      monitorPcRefs.current = {};
+      cameraStreamRefs.current = {};
+    };
+  }, []);
+
+  // Existing handlers with updated monitor offer handling
+  const handleProcessNewCameraOffer = async () => {
+    if (!newCamOfferInput) {
+      setError("New Camera Offer input is empty.");
+      return;
+    }
+    
+    setStatus("Processing new camera offer...");
+    setError('');
     let parsedRawOffer;
     try {
       parsedRawOffer = JSON.parse(newCamOfferInput);
