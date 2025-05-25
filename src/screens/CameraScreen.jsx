@@ -96,6 +96,13 @@ const commonStyles = {
     marginBottom: '8px',
     fontWeight: 'bold',
     color: '#555'
+  },
+  input: {
+    width: '100%',
+    padding: '10px',
+    border: '1px solid #ccc',
+    borderRadius: '4px',
+    boxSizing: 'border-box'
   }
 };
 
@@ -106,6 +113,8 @@ function CameraScreen() {
   const [answerSignalInput, setAnswerSignalInput] = useState('');
   const [status, setStatus] = useState('Not connected');
   const [error, setError] = useState('');
+  const [cameraName, setCameraName] = useState('');
+  const [sourceType, setSourceType] = useState('camera'); // 'camera' or 'screen'
 
   const [availableVideoDevices, setAvailableVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -148,60 +157,100 @@ function CameraScreen() {
   }, [localStream]);
 
   const startLocalMedia = async (deviceId) => {
-    setStatus('Starting local media...');
+    setStatus('メディアを起動中...');
     setError('');
 
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
-      // If PC exists and we are changing cameras, we might need to renegotiate or re-add tracks.
-      // For now, we assume connection will be re-established if it was active.
-      if (pcRef.current) {
-        // This is a simplification. In a real scenario, removing and re-adding tracks
-        // might require renegotiation (new offer/answer).
-        // Closing the PC and forcing a new offer might be more robust if changing mid-call.
-        // For now, we just clear the stream and expect the user to create a new offer.
-        setOfferSignal(''); 
-        setAnswerSignalInput('');
-        if (pcRef.current.signalingState !== 'closed') {
-            // pcRef.current.close(); // Option: close PC to force clean start
-            // pcRef.current = null;
-        }
-        setStatus('Camera changed. Please prepare a new offer.');
-      }
     }
 
-    const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
+      let stream;
+      if (sourceType === 'screen') {
+        const displayMediaOptions = {
+          video: {
+            displaySurface: "browser",
+          },
+          audio: {
+            suppressLocalAudioPlayback: false
+          },
+          selfBrowserSurface: "exclude",
+          systemAudio: "include",
+          surfaceSwitching: "include"
+        };
+
+        stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+        
+        // 画面共有が停止された時のイベントハンドラを設定
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          setStatus('画面共有が停止されました');
+          setLocalStream(null);
+          setSourceType('camera');
+        });
+      } else {
+        const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
+        stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        setAvailableVideoDevices(videoDevices);
+        if (deviceId && !videoDevices.find(d => d.deviceId === deviceId)) {
+          setSelectedDeviceId('');
+        }
+      }
+
       setLocalStream(stream);
-      setSelectedDeviceId(deviceId || (stream.getVideoTracks()[0]?.getSettings().deviceId || ''));
-      setStatus('Local media started.');
-      // After successfully getting media, re-enumerate to get labels if they were missing
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-      setAvailableVideoDevices(videoDevices);
+      if (sourceType === 'camera') {
+        setSelectedDeviceId(deviceId || (stream.getVideoTracks()[0]?.getSettings().deviceId || ''));
+      }
+
+      // 既存のPeerConnectionがある場合は、新しいストリームを追加
+      if (pcRef.current && pcRef.current.connectionState === 'connected') {
+        const senders = pcRef.current.getSenders();
+        const videoTrack = stream.getVideoTracks()[0];
+        const audioTrack = stream.getAudioTracks()[0];
+        
+        if (videoTrack) {
+          const videoSender = senders.find(sender => sender.track?.kind === 'video');
+          if (videoSender) {
+            await videoSender.replaceTrack(videoTrack);
+          }
+        }
+        
+        if (audioTrack) {
+          const audioSender = senders.find(sender => sender.track?.kind === 'audio');
+          if (audioSender) {
+            await audioSender.replaceTrack(audioTrack);
+          }
+        }
+      }
+
+      setStatus(sourceType === 'screen' ? '画面共有の準備完了' : 'カメラの起動が完了しました。');
 
     } catch (err) {
-      setError("Failed to start local media: " + err.message);
-      setStatus('Error starting media.');
-      // If starting with a specific deviceId fails, try to list devices again
-      // and clear selectedDeviceId if it's invalid.
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-      setAvailableVideoDevices(videoDevices);
-      if (deviceId && !videoDevices.find(d => d.deviceId === deviceId)) {
-        setSelectedDeviceId(''); // Clear invalid deviceId
+      if (err.name === 'NotAllowedError') {
+        setError("画面共有が拒否されました");
+      } else {
+        setError("メディアの起動に失敗しました: " + err.message);
+      }
+      setStatus('メディアの起動中にエラーが発生しました。');
+      if (sourceType === 'camera') {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        setAvailableVideoDevices(videoDevices);
+        if (deviceId && !videoDevices.find(d => d.deviceId === deviceId)) {
+          setSelectedDeviceId('');
+        }
       }
     }
   };
 
   const initializePcAndCreateOffer = async () => {
     if (!localStream) {
-      setError("Local media not started. Please start camera first.");
+      setError("ローカルメディアが開始されていません。先にカメラを開始してください。");
       return;
     }
-    setStatus("Cam: Initializing PeerConnection...");
+    setStatus("カメラ: PeerConnectionを初期化中...");
     setError('');
     collectedIceCandidatesRef.current = [];
     if(pcRef.current) pcRef.current.close();
@@ -214,33 +263,34 @@ function CameraScreen() {
     };
 
     pc.onicegatheringstatechange = () => {
-      setStatus("Cam ICE Gathering: " + pc.iceGatheringState);
+      setStatus("カメラ ICE収集状態: " + pc.iceGatheringState);
       if (pc.iceGatheringState === 'complete') {
         if (!pc.localDescription) {
-          setError("Cam: Error: Local description missing during offer creation.");
+          setError("カメラ: エラー: オファー作成中にローカル記述が見つかりません。");
           return;
         }
         const offerSignalPayload = {
           type: 'camera_offer',
+          name: cameraName || 'カメラ',
           sdp: pc.localDescription.toJSON(),
           iceCandidates: collectedIceCandidatesRef.current
         };
         setOfferSignal(JSON.stringify(offerSignalPayload, null, 2));
-        setStatus('Cam: Offer created. Copy it to Controller.');
+        setStatus('カメラ: オファーが作成されました。コントローラーにコピーしてください。');
       }
     };
 
     pc.onconnectionstatechange = () => {
-      setStatus("Cam-Ctrl Connection: " + pc.connectionState);
-      if (pc.connectionState === 'failed') setError("Cam: Connection to Controller FAILED.");
+      setStatus("カメラ-コントローラー接続状態: " + pc.connectionState);
+      if (pc.connectionState === 'failed') setError("カメラ: コントローラーへの接続が失敗しました。");
       else if (pc.connectionState === "connected") {
-        setStatus("Cam: Successfully connected to Controller!");
+        setStatus("カメラ: コントローラーに正常に接続されました！");
         setError('');
       }
     };
     
-    pc.oniceconnectionstatechange = () => setStatus("Cam-Ctrl ICE: " + pc.iceConnectionState);
-    pc.onsignalingstatechange = () => console.log(CAM_LOG_PREFIX + "Signaling state: " + pc.signalingState);
+    pc.oniceconnectionstatechange = () => setStatus("カメラ-コントローラー ICE状態: " + pc.iceConnectionState);
+    pc.onsignalingstatechange = () => console.log(CAM_LOG_PREFIX + "シグナリング状態: " + pc.signalingState);
 
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
@@ -248,66 +298,81 @@ function CameraScreen() {
       const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
       await pc.setLocalDescription(offer);
     } catch (err) {
-      setError("Cam: Offer Error: " + err.toString());
-      setStatus('Cam: Failed to create offer.');
+      setError("カメラ: オファーエラー: " + err.toString());
+      setStatus('カメラ: オファーの作成に失敗しました。');
     }
   };
 
   const processAnswerFromController = async () => {
     const pc = pcRef.current;
     if (!pc) {
-      setError("Cam: PeerConnection not initialized. Create offer first.");
+      setError("カメラ: PeerConnectionが初期化されていません。先にオファーを作成してください。");
       return;
     }
     if (!answerSignalInput) {
-      setError("Cam: Answer signal from Controller is empty.");
+      setError("カメラ: コントローラーからの応答が空です。");
       return;
     }
-    setStatus("Cam: Processing answer from Controller...");
+    setStatus("カメラ: コントローラーからの応答を処理中...");
     setError('');
     try {
       const answerPayload = JSON.parse(answerSignalInput);
       if (!answerPayload || typeof answerPayload.sdp !== 'object' || answerPayload.sdp.type !== 'answer') {
-        setError("Cam: Invalid answer signal received.");
+        setError("カメラ: 無効な応答信号を受信しました。");
         return;
       }
       await pc.setRemoteDescription(new RTCSessionDescription(answerPayload.sdp));
       if (answerPayload.iceCandidates && Array.isArray(answerPayload.iceCandidates)) {
         for (const candidate of answerPayload.iceCandidates) {
-          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("Error adding ICE candidate: "+e));
+          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("ICE候補の追加エラー: "+e));
         }
       }
-      setStatus("Cam: Answer processed. Connecting...");
+      setStatus("カメラ: 応答を処理しました。接続中...");
     } catch (err) {
-      setError("Cam: Answer Handling Error: " + err.toString());
-      setStatus('Cam: Failed to process answer.');
+      setError("カメラ: 応答処理エラー: " + err.toString());
+      setStatus('カメラ: 応答の処理に失敗しました。');
     }
   };
+
+  // 接続状態の変更を監視するハンドラーを追加
+  useEffect(() => {
+    if (pcRef.current) {
+      pcRef.current.onconnectionstatechange = () => {
+        const state = pcRef.current.connectionState;
+        if (state === 'connected') {
+          // 接続が成功したら接続情報を非表示にする
+          setOfferSignal('');
+          setAnswerSignalInput('');
+          setStatus('カメラが正常に接続されました');
+        }
+      };
+    }
+  }, [pcRef.current]);
 
   const fallbackCopyToClipboard = (text, type) => {
     if (offerSignalTextareaRef.current) {
       offerSignalTextareaRef.current.select();
       document.execCommand('copy');
-      setStatus("Copied " + type + " (fallback)! Please verify.");
-      setTimeout(() => setStatus(prev => prev === ("Copied " + type + " (fallback)! Please verify.") ? ('Cam: ' + type + ' ready.') : prev), 2000);
+      setStatus(type + "をコピーしました（フォールバック）！確認してください。");
+      setTimeout(() => setStatus(prev => prev === (type + "をコピーしました（フォールバック）！確認してください。") ? ('カメラ: ' + type + ' 準備完了。') : prev), 2000);
     } else {
-      setError("Textarea ref not available for fallback copy.");
+      setError("フォールバックコピーのためのテキストエリアが利用できません。");
     }
   };
 
   const copyToClipboard = (textToCopy, type) => {
     if (!textToCopy) {
-      setError("No " + type + " to copy.");
+      setError("コピーする" + type + "がありません。");
       return;
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(textToCopy)
         .then(() => {
-          setStatus('Copied ' + type + ' to clipboard!');
-          setTimeout(() => setStatus(prev => prev === ('Copied ' + type + ' to clipboard!') ? ('Cam: ' + type + ' ready.') : prev), 2000);
+          setStatus(type + 'をクリップボードにコピーしました！');
+          setTimeout(() => setStatus(prev => prev === (type + 'をクリップボードにコピーしました！') ? ('カメラ: ' + type + ' 準備完了。') : prev), 2000);
         })
         .catch(err => {
-          setError('Failed to copy ' + type + '. Please copy manually.');
+          setError(type + 'のコピーに失敗しました。手動でコピーしてください。');
           fallbackCopyToClipboard(textToCopy, type);
         });
     } else {
@@ -316,40 +381,58 @@ function CameraScreen() {
   };
 
   return (
-    <div style={commonStyles.pageContainer}>
-      <header style={commonStyles.header}>
-        <h1 style={commonStyles.title}>Camera Feed Setup</h1>
-        <p style={commonStyles.status}>Status: {status}</p>
-        {error && <p style={commonStyles.error}>Error: {error}</p>}
+    <div className="page-container">
+      <header className="header">
+        <h1 className="title">カメラ設定</h1>
+        <p className="status">カメラの状態: {status}</p>
+        {error && <p className="error">エラー: {error}</p>}
       </header>
 
-      <div style={commonStyles.mainContentArea}>
-        <section style={commonStyles.card}>
-          <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Local Camera Preview</h2>
-          {localStream ? (
-            <video 
-              ref={videoEl => { if (videoEl) videoEl.srcObject = localStream; }} 
-              autoPlay 
-              playsInline 
-              muted 
-              style={commonStyles.video}
+      <div className="main-content-area">
+        <section className="card">
+          <h2 className="title title-section">カメラの設定</h2>
+          <div className="device-selection">
+            <label htmlFor="cameraName" className="label">カメラの名前:</label>
+            <input
+              id="cameraName"
+              type="text"
+              value={cameraName}
+              onChange={e => setCameraName(e.target.value)}
+              placeholder="カメラの名前を入力"
+              className="input"
             />
-          ) : (
-            <div style={{...commonStyles.video, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#333', color: 'white', minHeight: '200px'}}>
-              <p>Camera not started or no stream available.</p>
+          </div>
+
+          <div className="source-selection" style={{ marginBottom: '20px' }}>
+            <label className="label">映像ソースの選択:</label>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+              <button
+                onClick={() => {
+                  setSourceType('camera');
+                  setLocalStream(null);
+                }}
+                className={`button ${sourceType === 'camera' ? 'button-primary' : 'button-secondary'}`}
+              >
+                カメラを使用
+              </button>
+              <button
+                onClick={() => {
+                  setSourceType('screen');
+                  setLocalStream(null);
+                }}
+                className={`button ${sourceType === 'screen' ? 'button-primary' : 'button-secondary'}`}
+              >
+                画面を共有
+              </button>
             </div>
-          )}
-          <div style={commonStyles.buttonGroup}>
-            <button 
-              onClick={() => startLocalMedia(selectedDeviceId)} 
-              disabled={!!localStream && availableVideoDevices.length === 0}
-              style={{...commonStyles.button, ...((!!localStream && availableVideoDevices.length === 0) && commonStyles.buttonDisabled)}}
-            >
-              {localStream ? 'Change Camera / Restart' : 'Start Camera'}
-            </button>
-            {availableVideoDevices.length > 0 && (
-              <select 
-                value={selectedDeviceId} 
+          </div>
+
+          {sourceType === 'camera' && (
+            <div className="device-selection">
+              <label htmlFor="videoDevices" className="label">カメラを選択:</label>
+              <select
+                id="videoDevices"
+                value={selectedDeviceId}
                 onChange={e => {
                   const newDeviceId = e.target.value;
                   setSelectedDeviceId(newDeviceId);
@@ -357,69 +440,96 @@ function CameraScreen() {
                     startLocalMedia(newDeviceId);
                   }
                 }}
-                style={{...commonStyles.button, paddingRight: '30px', WebkitAppearance: 'menulist-button'}}
-                disabled={!localStream && availableVideoDevices.length === 0}
+                className="select"
               >
-                <option value="">-- Select Camera --</option>
+                <option value="">カメラを選択してください</option>
                 {availableVideoDevices.map(device => (
                   <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Camera ${availableVideoDevices.indexOf(device) + 1}`}
+                    {device.label || `カメラ ${device.deviceId}`}
                   </option>
                 ))}
               </select>
-            )}
-          </div>
-        </section>
-
-        <section style={commonStyles.card}>
-          <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Connection Details</h2>
-          
-          <div style={commonStyles.buttonGroup}>
-            <button 
-              onClick={initializePcAndCreateOffer} 
-              disabled={!localStream || !!offerSignal}
-              style={{...commonStyles.button, ...((!localStream || !!offerSignal) && commonStyles.buttonDisabled)}}
-            >
-              {offerSignal ? 'Offer Prepared' : '1. Prepare Offer for Controller'}
-            </button>
-          </div>
-
-          {offerSignal && (
-            <div style={{marginTop: '15px'}}>
-              <label htmlFor="offerSignal" style={commonStyles.label}>Offer to send to Controller:</label>
-              <textarea 
-                id="offerSignal"
-                ref={offerSignalTextareaRef}
-                value={offerSignal} 
-                readOnly 
-                style={commonStyles.textarea}
-              />
-              <div style={{...commonStyles.buttonGroup, marginTop: '10px'}}>
-                <button onClick={() => copyToClipboard(offerSignal, "Offer")} style={commonStyles.button}>Copy Offer</button>
-                <button onClick={() => downloadJson(offerSignal, `camera-offer-${Date.now()}.json`, "Offer JSON")} style={commonStyles.button}>Download Offer JSON</button>
-              </div>
             </div>
           )}
 
-          <div style={{marginTop: '20px'}}>
-            <label htmlFor="answerSignalInput" style={commonStyles.label}>Paste Answer from Controller:</label>
-            <textarea 
-              id="answerSignalInput"
-              value={answerSignalInput} 
-              onChange={e => setAnswerSignalInput(e.target.value)} 
-              placeholder="Paste Controller's Answer JSON here" 
-              style={commonStyles.textarea}
-              disabled={!offerSignal}
+          <div className="video-preview">
+            <h3 className="title title-subsection">プレビュー</h3>
+            <video
+              ref={videoEl => {
+                if (videoEl) videoEl.srcObject = localStream;
+              }}
+              autoPlay
+              playsInline
+              muted
+              className="video"
             />
+            <div className="button-group">
+              <button
+                onClick={() => startLocalMedia(selectedDeviceId)}
+                disabled={(!localStream && availableVideoDevices.length === 0 && sourceType === 'camera')}
+                className={`button ${(!localStream && availableVideoDevices.length === 0 && sourceType === 'camera') ? 'button-disabled' : ''}`}
+              >
+                {localStream ? 'メディアを再起動' : 'メディアを開始'}
+              </button>
+            </div>
           </div>
-          <div style={commonStyles.buttonGroup}>
-            <button 
-              onClick={processAnswerFromController} 
-              disabled={!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
-              style={{...commonStyles.button, ...((!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')) && commonStyles.buttonDisabled)}}
+        </section>
+
+        <section className="card">
+          <h2 className="title title-section">コントローラー接続</h2>
+          <div className="connection-status">
+            <p>接続状態: {status}</p>
+            {error && <p className="error">接続エラー: {error}</p>}
+          </div>
+
+          <div className="connection-controls">
+            <button
+              onClick={initializePcAndCreateOffer}
+              disabled={!localStream || !!offerSignal}
+              className={`button ${!localStream || !!offerSignal ? 'button-disabled' : ''}`}
             >
-              {pcRef.current && pcRef.current.connectionState === 'connected' ? 'Connected' : '2. Process Answer'}
+              {offerSignal ? 'オファー準備完了' : 'オファーを作成'}
             </button>
+
+            {offerSignal && (
+              <div className="json-display">
+                <label htmlFor="offerJson" className="label">コントローラーに送信するオファー:</label>
+                <textarea
+                  id="offerJson"
+                  ref={offerSignalTextareaRef}
+                  value={offerSignal}
+                  readOnly
+                  className="textarea"
+                />
+                <div className="button-group">
+                  <button
+                    onClick={() => copyToClipboard(offerSignal, "オファー")}
+                    className="button"
+                  >
+                    オファーをコピー
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="answer-section">
+              <label htmlFor="answerInput" className="label">コントローラーからの応答を貼り付け:</label>
+              <textarea
+                id="answerInput"
+                value={answerSignalInput}
+                onChange={e => setAnswerSignalInput(e.target.value)}
+                placeholder="コントローラーの応答JSONをここに貼り付け"
+                className="textarea"
+                disabled={!offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
+              />
+              <button
+                onClick={processAnswerFromController}
+                disabled={!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
+                className={`button ${!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected') ? 'button-disabled' : ''}`}
+              >
+                {pcRef.current && pcRef.current.connectionState === 'connected' ? '接続済み' : '応答を処理'}
+              </button>
+            </div>
           </div>
         </section>
       </div>

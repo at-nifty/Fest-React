@@ -33,17 +33,17 @@ export const useAppStore = create((set, get) => ({
   },
 
   // == Camera Management ==
-  addCamera: (offerJson, iceCandidatesFromCamera, rawOffer) => {
+  addCamera: (offerJson, iceCandidatesFromCamera, rawOffer, name) => {
     const newCameraId = uuidv4();
     const newCamera = {
       id: newCameraId,
-      name: generateDefaultName("Camera", get().cameras.length + 1),
-      offerJson, // Full JSON string as received
-      rawOffer, // Parsed offer object, primarily for SDP
-      iceCandidatesFromCamera, // Parsed ICE candidates from camera
-      answerJson: null, 
-      iceCandidatesForControllerAnswer: [], 
-      status: 'offer_received', 
+      name: name || generateDefaultName("Camera", get().cameras.length + 1),
+      offerJson,
+      rawOffer,
+      iceCandidatesFromCamera,
+      answerJson: null,
+      iceCandidatesForControllerAnswer: [],
+      status: 'offer_received',
     };
     console.log(STORE_LOG_PREFIX + " Adding new camera: ", newCamera);
     set((state) => ({ cameras: [...state.cameras, newCamera] }));
@@ -86,6 +86,15 @@ export const useAppStore = create((set, get) => ({
   
   getCameraById: (cameraId) => {
     return get().cameras.find(cam => cam.id === cameraId);
+  },
+
+  updateCameraName: (cameraId, name) => {
+    console.log(STORE_LOG_PREFIX + " Updating camera name: " + cameraId + " to: " + name);
+    set((state) => ({
+      cameras: state.cameras.map((cam) =>
+        cam.id === cameraId ? { ...cam, name } : cam
+      ),
+    }));
   },
 
   // == Monitor Management ==
@@ -147,6 +156,15 @@ export const useAppStore = create((set, get) => ({
 
   getMonitorById: (monitorId) => {
     return get().monitors.find(mon => mon.id === monitorId);
+  },
+
+  updateMonitorName: (monitorId, name) => {
+    console.log(STORE_LOG_PREFIX + " Updating monitor name: " + monitorId + " to: " + name);
+    set((state) => ({
+      monitors: state.monitors.map((mon) =>
+        mon.id === monitorId ? { ...mon, name } : mon
+      ),
+    }));
   },
 
   // == Connection Selection / Routing ==

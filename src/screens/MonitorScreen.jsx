@@ -11,7 +11,7 @@ const commonStyles = {
     boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#f0f2f5', 
+    backgroundColor: '#f0f2f5',
     gap: '0'
   },
   header: {
@@ -128,6 +128,7 @@ function MonitorScreen() {
   const [monitorAnswerJson, setMonitorAnswerJson] = useState('');
   const [status, setStatus] = useState('Waiting for Offer from Controller');
   const [error, setError] = useState('');
+  const [monitorName, setMonitorName] = useState('');
   const pcRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const videoRef = useRef(null);
@@ -201,7 +202,7 @@ function MonitorScreen() {
 
     try {
       if (pcRef.current) pcRef.current.close();
-      const pc = new RTCPeerConnection({}); 
+      const pc = new RTCPeerConnection({});
       pcRef.current = pc;
 
       pc.onicecandidate = (event) => {
@@ -217,6 +218,7 @@ function MonitorScreen() {
           }
           const answerPayload = {
             type: 'monitor_answer_to_controller',
+            name: monitorName || 'モニター',
             sdp: pc.localDescription.toJSON(),
             iceCandidates: collectedIceCandidatesRef.current
           };
@@ -226,14 +228,19 @@ function MonitorScreen() {
       };
 
       pc.onconnectionstatechange = () => {
-        setStatus("Monitor Connection: " + pc.connectionState);
-        if (pc.connectionState === 'failed') setError("Monitor: Connection FAILED.");
-        else if (pc.connectionState === 'connected') {
+        const state = pc.connectionState;
+        setStatus("Monitor Connection: " + state);
+        if (state === 'failed') {
+          setError("Monitor: Connection FAILED.");
+        } else if (state === 'connected') {
           setStatus("Monitor: Connected! Stream should be playing.");
           setError('');
+          // 接続が成功したら接続情報を非表示にする
+          setControllerOfferJsonInput('');
+          setMonitorAnswerJson('');
         }
       };
-      
+
       pc.oniceconnectionstatechange = () => setStatus("Monitor ICE: " + pc.iceConnectionState);
       pc.onsignalingstatechange = () => console.log(MON_LOG_PREFIX + "Signaling state: " + pc.signalingState);
 
@@ -253,10 +260,10 @@ function MonitorScreen() {
       pc.addTransceiver('audio', { direction: 'recvonly' });
 
       await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.sdp));
-      
+
       if (offerPayload.iceCandidates && Array.isArray(offerPayload.iceCandidates)) {
         for (const candidate of offerPayload.iceCandidates) {
-          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("Error adding remote ICE: "+e));
+          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("Error adding remote ICE: " + e));
         }
       }
 
@@ -303,63 +310,44 @@ function MonitorScreen() {
   return (
     <div style={commonStyles.pageContainer}>
       <header style={commonStyles.header}>
-        <h1 style={commonStyles.title}>Monitor Station</h1>
-        <p style={commonStyles.status}>Status: {status}</p>
-        {error && <p style={commonStyles.error}>Error: {error}</p>}
+        <h1 style={commonStyles.title}>モニター設定</h1>
+        <p style={commonStyles.status}>モニターの状態: {status}</p>
+        {error && <p style={commonStyles.error}>エラー: {error}</p>}
       </header>
 
       <div style={commonStyles.mainContentArea}>
         <section style={commonStyles.card}>
-          <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Incoming Connection Setup</h2>
-          <div>
-            <label htmlFor="controllerOffer" style={commonStyles.label}>Paste Offer from Controller:</label>
-            <textarea 
-                id="controllerOffer"
-                placeholder="Controller's Offer JSON goes here..." 
-                value={controllerOfferJsonInput} 
-                onChange={e => setControllerOfferJsonInput(e.target.value)} 
-                style={commonStyles.textarea}
-                disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
+          <h2 style={{ ...commonStyles.title, fontSize: '1.4em' }}>モニター設定</h2>
+          <div style={{ marginBottom: '20px' }}>
+            <label htmlFor="monitorName" style={commonStyles.label}>モニターの名前:</label>
+            <input
+              id="monitorName"
+              type="text"
+              value={monitorName}
+              onChange={e => setMonitorName(e.target.value)}
+              placeholder="モニターの名前を入力"
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                marginBottom: '10px',
+                boxSizing: 'border-box'
+              }}
             />
           </div>
-          <button 
-            onClick={processOfferAndCreateAnswer} 
-            style={{...commonStyles.button, ...((!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')) && commonStyles.buttonDisabled)} }
-            disabled={!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}
-          >
-            Process Offer & Generate Answer
-          </button>
-          
-          {monitorAnswerJson && (
-            <div>
-              <label htmlFor="monitorAnswer" style={commonStyles.label}>Copy Answer to Controller:</label>
-              <textarea 
-                id="monitorAnswer"
-                ref={answerTextareaRef} 
-                value={monitorAnswerJson} 
-                readOnly 
-                style={commonStyles.textarea}
-              />
-              <button 
-                  onClick={() => copyToClipboard(monitorAnswerJson, 'Answer', answerTextareaRef)} 
-                  style={{...commonStyles.button, marginTop: '10px'}}
-              >
-                Copy Answer
-              </button>
-            </div>
-          )}
         </section>
 
         <section style={commonStyles.card}>
-          <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Remote Video Feed</h2>
+          <h2 style={{ ...commonStyles.title, fontSize: '1.4em' }}>モニタープレビュー</h2>
           <div ref={videoContainerRef} style={commonStyles.videoContainer}>
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              style={commonStyles.video} 
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              style={commonStyles.video}
             />
-            {remoteStreamRef.current && (
+            {remoteStreamRef.current && !isFullscreen && (
               <button
                 onClick={toggleFullscreen}
                 style={commonStyles.fullscreenButton}
@@ -367,14 +355,14 @@ function MonitorScreen() {
               >
                 {isFullscreen ? (
                   <svg style={commonStyles.fullscreenIcon} viewBox="0 0 24 24">
-                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
                   </svg>
                 ) : (
                   <svg style={commonStyles.fullscreenIcon} viewBox="0 0 24 24">
-                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
                   </svg>
                 )}
-                {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                {isFullscreen ? "" : "全画面表示"}
               </button>
             )}
             {!remoteStreamRef.current && (
@@ -395,6 +383,52 @@ function MonitorScreen() {
               </div>
             )}
           </div>
+        </section>
+
+        <section style={commonStyles.card}>
+          <h2 style={{ ...commonStyles.title, fontSize: '1.4em' }}>コントローラー接続</h2>
+          <div className="connection-status">
+            <p>接続状態: {status}</p>
+            {error && <p className="error">接続エラー: {error}</p>}
+          </div>
+
+          <div className="offer-section">
+            <label htmlFor="controllerOffer" style={commonStyles.label}>コントローラーからのオファーを貼り付けてください:</label>
+            <textarea
+              id="controllerOffer"
+              placeholder="コントローラーのオファーJSONをここに貼り付け"
+              value={controllerOfferJsonInput}
+              onChange={e => setControllerOfferJsonInput(e.target.value)}
+              style={commonStyles.textarea}
+              disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
+            />
+            <button
+              onClick={processOfferAndCreateAnswer}
+              style={{ ...commonStyles.button, ...((!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')) && commonStyles.buttonDisabled) }}
+              disabled={!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}
+            >
+              {pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed' ? 'オファー処理中...' : 'オファーを処理'}
+            </button>
+          </div>
+
+          {monitorAnswerJson && (
+            <div className="json-display">
+              <label htmlFor="monitorAnswer" style={commonStyles.label}>生成された応答:</label>
+              <textarea
+                id="monitorAnswer"
+                ref={answerTextareaRef}
+                value={monitorAnswerJson}
+                readOnly
+                style={commonStyles.textarea}
+              />
+              <button
+                onClick={() => copyToClipboard(monitorAnswerJson, 'Answer', answerTextareaRef)}
+                style={{ ...commonStyles.button, marginTop: '10px' }}
+              >
+                応答をコピー
+              </button>
+            </div>
+          )}
         </section>
       </div>
     </div>

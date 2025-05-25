@@ -13,7 +13,7 @@ function ControllerScreen() {
     addMonitorPlaceholder,
     selectCamera, selectedCameraId, // Only used for preview now
     setOfferForMonitor, setMonitorAnswer, updateMonitorStatus, getMonitorById,
-    initializeCameras, initializeMonitors // ストアに初期化関数があることを想定
+    initializeCameras, initializeMonitors, updateMonitorName // ストアに初期化関数があることを想定
   } = useAppStore();
 
   const [newCamOfferInput, setNewCamOfferInput] = useState('');
@@ -49,7 +49,16 @@ function ControllerScreen() {
     }
     const videoStream = canvas.captureStream(1);
     const [videoTrack] = videoStream.getVideoTracks();
-    return new MediaStream([videoTrack]);
+
+    // Create silent audio track
+    const audioCtx = new AudioContext();
+    const oscillator = audioCtx.createOscillator();
+    const dst = oscillator.connect(audioCtx.createMediaStreamDestination());
+    oscillator.start();
+    const [audioTrack] = dst.stream.getAudioTracks();
+    audioTrack.enabled = false; // Mute the audio track
+
+    return new MediaStream([videoTrack, audioTrack]);
   };
 
   const switchMonitorCamera = useCallback(async (monitorId, cameraId) => {
@@ -69,22 +78,19 @@ function ControllerScreen() {
         return;
       }
 
-      // Get only video tracks
-      const videoTracks = newStream.getVideoTracks();
-      if (videoTracks.length === 0) {
-        console.error(CTRL_LOG_PREFIX + " No video tracks available in the stream");
-        return;
-      }
+      const tracks = newStream.getTracks();
+      const senders = pc.getSenders();
 
-      // Find video sender
-      const videoSender = pc.getSenders().find(sender => sender.track?.kind === 'video');
-      if (!videoSender) {
-        console.error(CTRL_LOG_PREFIX + " No video sender found in the peer connection");
-        return;
+      // Match tracks with senders by kind
+      for (const track of tracks) {
+        const sender = senders.find(s => s.track?.kind === track.kind);
+        if (sender) {
+          await sender.replaceTrack(track);
+          if (track.kind === 'audio') {
+            track.enabled = false; // Keep audio track muted
+          }
+        }
       }
-
-      // Replace only video track
-      await videoSender.replaceTrack(videoTracks[0]);
 
       setMonitorSourceMap(prev => ({ ...prev, [monitorId]: cameraId }));
       setStatus(`Switched ${monitor.name} to ${cameraId ? getCameraById(cameraId)?.name || 'unknown camera' : 'No Signal'}`);
@@ -93,7 +99,7 @@ function ControllerScreen() {
       console.error(CTRL_LOG_PREFIX + " Error switching camera for monitor " + monitorId, err);
       setError(`Failed to switch camera for ${monitor.name}: ${err.message}`);
     }
-  }, [getCameraById, getMonitorById, createEmptyMediaStream]);
+  }, [getCameraById, getMonitorById]);
 
   useEffect(() => {
     return () => {
@@ -214,15 +220,12 @@ function ControllerScreen() {
       return;
     }
 
-    const newCamId = addCamera(newCamOfferInput, parsedRawOffer.iceCandidates || [], parsedRawOffer);
+    const newCamId = addCamera(newCamOfferInput, parsedRawOffer.iceCandidates || [], parsedRawOffer, parsedRawOffer.name);
     updateCameraStatus(newCamId, 'processing_offer');
     setExpandedCameraJson(newCamId);
 
     try {
-      const pc = new RTCPeerConnection({
-        offerToReceiveAudio: false,
-        offerToReceiveVideo: true
-      });
+      const pc = new RTCPeerConnection();
       cameraPcRefs.current[newCamId] = pc;
       const collectedIceCandidates = [];
 
@@ -249,11 +252,14 @@ function ControllerScreen() {
       };
 
       pc.ontrack = event => {
-        if (event.track.kind !== 'video') return; // Only handle video tracks
-        const stream = new MediaStream([event.track]);
-        cameraStreamRefs.current[newCamId] = stream;
-        updateCameraStatus(newCamId, 'connected_streaming');
-        setStatus("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connected and streaming.");
+        if (event.track.kind === 'video') {
+          const stream = new MediaStream([event.track]);
+          cameraStreamRefs.current[newCamId] = stream;
+          updateCameraStatus(newCamId, 'connected_streaming');
+          setStatus("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connected and streaming.");
+          // 接続成功時に接続情報を隠す
+          setExpandedCameraJson(null);
+        }
       };
 
       pc.onconnectionstatechange = () => {
@@ -261,36 +267,42 @@ function ControllerScreen() {
         updateCameraStatus(newCamId, "pc_state_" + camState);
         if (camState === 'failed') {
           setError("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connection failed.");
+        } else if (camState === 'connected') {
+          // 接続成功時に接続情報を隠す
+          setExpandedCameraJson(null);
         }
       };
 
-      // Modify the SDP to only accept video tracks and remove BUNDLE audio
-      const modifiedOffer = {
-        ...parsedRawOffer.sdp,
-        sdp: parsedRawOffer.sdp.sdp
-          .replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
-          .replace(/a=group:BUNDLE audio video/g, 'a=group:BUNDLE video')
-      };
+      let sdpOffer = parsedRawOffer.sdp;
+      if (typeof sdpOffer === 'string') {
+        try {
+          sdpOffer = JSON.parse(sdpOffer);
+        } catch (e) {
+          console.error(CTRL_LOG_PREFIX + " Error parsing SDP string:", e);
+          setError("Invalid SDP format in offer");
+          updateCameraStatus(newCamId, 'error_offer_processing');
+          return;
+        }
+      }
 
-      await pc.setRemoteDescription(new RTCSessionDescription(modifiedOffer));
+      console.log(CTRL_LOG_PREFIX + " Setting remote description with offer");
+      await pc.setRemoteDescription(new RTCSessionDescription(sdpOffer));
+
       for (const candidate of (parsedRawOffer.iceCandidates || [])) {
         if (candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(e => console.warn("Ctrl: Error adding cam ICE: " + e));
+            .catch(e => {
+              console.warn(CTRL_LOG_PREFIX + " Error adding cam ICE:", e);
+              setError("Error adding ICE candidate: " + e.message);
+            });
         }
       }
-      const localAnswer = await pc.createAnswer({
-        offerToReceiveAudio: false,
-        offerToReceiveVideo: true
-      });
-      
-      // Modify the answer to only include video and remove BUNDLE audio
-      localAnswer.sdp = localAnswer.sdp
-        .replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
-        .replace(/a=group:BUNDLE audio video/g, 'a=group:BUNDLE video');
-      
+
+      const localAnswer = await pc.createAnswer();
+      console.log(CTRL_LOG_PREFIX + " Setting local description with answer");
       await pc.setLocalDescription(localAnswer);
     } catch (err) {
+      console.error(CTRL_LOG_PREFIX + " Error in camera offer processing:", err);
       setError("Error processing camera " + (getCameraById(newCamId)?.name || newCamId) + " offer: " + err.toString());
       updateCameraStatus(newCamId, 'error_offer_processing');
     }
@@ -314,19 +326,18 @@ function ControllerScreen() {
 
     try {
       if (monitorPcRefs.current[monitorId]) monitorPcRefs.current[monitorId].close();
-      const pc = new RTCPeerConnection({
-        offerToReceiveAudio: false,
-        offerToReceiveVideo: true
-      });
+      const pc = new RTCPeerConnection();
       monitorPcRefs.current[monitorId] = pc;
       const collectedIceCandidates = [];
 
       // Start with empty stream - camera can be selected later
       const emptyStream = createEmptyMediaStream();
-      const videoTrack = emptyStream.getVideoTracks()[0];
-      if (videoTrack) {
-        pc.addTrack(videoTrack, emptyStream);
-      }
+      emptyStream.getTracks().forEach(track => {
+        pc.addTrack(track, emptyStream);
+        if (track.kind === 'audio') {
+          track.enabled = false; // Mute the audio track
+        }
+      });
 
       pc.onicecandidate = event => {
         if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
@@ -361,16 +372,7 @@ function ControllerScreen() {
         }
       };
 
-      const localOffer = await pc.createOffer({
-        offerToReceiveAudio: false,
-        offerToReceiveVideo: true
-      });
-      
-      // Modify the offer to only include video and remove BUNDLE audio
-      localOffer.sdp = localOffer.sdp
-        .replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
-        .replace(/a=group:BUNDLE audio video/g, 'a=group:BUNDLE video');
-      
+      const localOffer = await pc.createOffer();
       await pc.setLocalDescription(localOffer);
 
     } catch (err) {
@@ -384,6 +386,18 @@ function ControllerScreen() {
     if (!monitor || !answerFromMonitorInput) {
       setError("Monitor not found or answer input missing for " + monitorId);
       return;
+    }
+
+    let answerPayload;
+    try {
+      answerPayload = JSON.parse(answerFromMonitorInput);
+    } catch (e) {
+      setError("Invalid JSON in Monitor Answer: " + e.message);
+      return;
+    }
+
+    if (answerPayload.name) {
+      updateMonitorName(monitorId, answerPayload.name);
     }
 
     const pc = monitorPcRefs.current[monitorId];
@@ -404,17 +418,28 @@ function ControllerScreen() {
         return;
       }
 
-      // Modify the answer to only include video
-      const modifiedAnswer = {
-        ...answerPayload.sdp,
-        sdp: answerPayload.sdp.sdp.replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
-      };
+      let sdpAnswer = answerPayload.sdp;
+      if (typeof sdpAnswer === 'string') {
+        try {
+          sdpAnswer = JSON.parse(sdpAnswer);
+        } catch (e) {
+          console.error(CTRL_LOG_PREFIX + " Error parsing answer SDP string:", e);
+          setError("Invalid SDP format in answer");
+          updateMonitorStatus(monitorId, 'error_processing_answer');
+          return;
+        }
+      }
 
-      await pc.setRemoteDescription(new RTCSessionDescription(modifiedAnswer));
+      console.log(CTRL_LOG_PREFIX + " Setting remote description with answer");
+      await pc.setRemoteDescription(new RTCSessionDescription(sdpAnswer));
+
       for (const candidate of (answerPayload.iceCandidates || [])) {
         if (candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(e => console.warn("Ctrl: Error adding mon ICE: " + e));
+            .catch(e => {
+              console.warn(CTRL_LOG_PREFIX + " Error adding mon ICE:", e);
+              setError("Error adding ICE candidate: " + e.message);
+            });
         }
       }
 
@@ -425,9 +450,13 @@ function ControllerScreen() {
       await switchMonitorCamera(monitorId, null);
       setStatus("Monitor " + monitor.name + " connected. No Signal screen is set.");
 
+      // 接続成功時に接続情報を隠す
+      setExpandedMonitorJson(null);
+
     } catch (err) {
       console.error(CTRL_LOG_PREFIX + " Error processing answer for monitor " + monitorId, err);
       setError(`Failed to process answer for ${monitor.name}: ${err.message}`);
+      updateMonitorStatus(monitorId, 'error_processing_answer');
     }
 
     setAnswerFromMonitorInput('');
@@ -509,42 +538,52 @@ function ControllerScreen() {
       <div className="button-group">
         <button
           onClick={() => selectCamera(cam.id)}
-          disabled={selectedCameraId === cam.id}
-          className={`button ${selectedCameraId === cam.id ? 'button-disabled' : ''}`}
+          disabled={selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected')}
+          className={`button ${selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected') ? 'button-disabled' : ''}`}
         >
-          {selectedCameraId === cam.id ? 'Current Source' :
-            (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'Select as Source' :
-              (cam.status === 'track_received_no_stream' ? 'Stream Issue' : 'Not Streaming')
+          {selectedCameraId === cam.id ? '現在のソース' :
+            (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'ソースとして選択' :
+              (cam.status === 'track_received_no_stream' ? 'ストリーム問題' : '未ストリーミング')
             )}
         </button>
-        <button
-          onClick={() => setExpandedCameraJson(expandedCameraJson === cam.id ? null : cam.id)}
-          className="button"
-        >
-          {expandedCameraJson === cam.id ? 'Hide' : 'Show'} Answer
-        </button>
+        {(cam.answerJson || cam.status === 'error_offer_processing') && (
+          <button
+            onClick={() => setExpandedCameraJson(expandedCameraJson === cam.id ? null : cam.id)}
+            className="button"
+          >
+            {expandedCameraJson === cam.id ? '応答を隠す' : '応答を表示'}
+          </button>
+        )}
         <button
           onClick={() => handleRemoveCamera(cam.id)}
           className="button button-danger"
         >
-          Remove Camera
+          カメラを削除
         </button>
       </div>
-      {expandedCameraJson === cam.id && cam.answerJson && (
+      {expandedCameraJson === cam.id && (
         <div className="expanded-content">
-          <label htmlFor={`camAnswer-${cam.id}`} className="label">Answer for {cam.name}:</label>
-          <textarea
-            id={`camAnswer-${cam.id}`}
-            readOnly
-            value={cam.answerJson}
-            className="textarea"
-          />
-          <button
-            onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
-            className="button"
-          >
-            Copy Answer
-          </button>
+          {cam.answerJson ? (
+            <>
+              <label htmlFor={`camAnswer-${cam.id}`} className="label">{cam.name}の応答:</label>
+              <textarea
+                id={`camAnswer-${cam.id}`}
+                readOnly
+                value={cam.answerJson}
+                className="textarea"
+              />
+              <button
+                onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
+                className="button"
+              >
+                応答をコピー
+              </button>
+            </>
+          ) : cam.status === 'error_offer_processing' && (
+            <div className="error-message">
+              カメラのオファー処理に失敗しました。カメラを削除して再度追加してください。
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -564,19 +603,19 @@ function ControllerScreen() {
 
         {isConnected && (
           <div className="expanded-content">
-            <label htmlFor={`camera-select-${mon.id}`} className="label">Select Camera Source:</label>
+            <label htmlFor={`camera-select-${mon.id}`} className="label">カメラを選択:</label>
             <select
               id={`camera-select-${mon.id}`}
               value={currentCameraId || ''}
               onChange={(e) => switchMonitorCamera(mon.id, e.target.value || null)}
               className="camera-source-select button"
             >
-              <option value="">No Signal</option>
+              <option value="">信号なし</option>
               {cameras
                 .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
                 .map(cam => (
                   <option key={cam.id} value={cam.id}>
-                    {cam.name} {cam.status === 'connected_streaming' ? '(Streaming)' : '(Connected)'}
+                    {cam.name} {cam.status === 'connected_streaming' ? '(ストリーミング中)' : '(接続済み)'}
                   </option>
                 ))
               }
@@ -590,19 +629,19 @@ function ControllerScreen() {
             disabled={mon.status === 'connected_to_controller' || mon.status?.includes('error')}
             className={`button ${mon.status === 'connected_to_controller' || mon.status?.includes('error') ? 'button-disabled' : ''}`}
           >
-            {mon.status === 'connected_to_controller' ? 'Connected' : 'Prepare Offer'}
+            {mon.status === 'connected_to_controller' ? '接続済み' : 'オファーを準備'}
           </button>
           <button
             onClick={() => setExpandedMonitorJson(expandedMonitorJson === mon.id ? null : mon.id)}
             className="button"
           >
-            {expandedMonitorJson === mon.id ? 'Hide' : 'Show'} Details
+            {expandedMonitorJson === mon.id ? '詳細を隠す' : '詳細を表示'}
           </button>
           <button
             onClick={() => handleRemoveMonitor(mon.id)}
             className="button button-danger"
           >
-            Remove Monitor
+            モニターを削除
           </button>
         </div>
         
@@ -611,7 +650,7 @@ function ControllerScreen() {
             {mon.offerJsonFromController && (
               <div>
                 <label htmlFor={`monOffer-${mon.id}`} className="label">
-                  Offer for {mon.name}: {currentCameraId ? `(from ${getCameraById(currentCameraId)?.name || 'selected camera'})` : '(No Signal)'}
+                  {mon.name}へのオファー: {currentCameraId ? `(${getCameraById(currentCameraId)?.name || '選択されたカメラ'}から)` : '(信号なし)'}
                 </label>
                 <textarea
                   id={`monOffer-${mon.id}`}
@@ -623,16 +662,16 @@ function ControllerScreen() {
                   onClick={() => copyToClipboard(mon.offerJsonFromController, "Offer for Monitor")}
                   className="button"
                 >
-                  Copy Offer
+                  オファーをコピー
                 </button>
               </div>
             )}
             {mon.status !== 'connected_to_controller' && mon.offerJsonFromController && (
               <div>
-                <label htmlFor={`monAnswer-${mon.id}`} className="label">Paste Answer from {mon.name}:</label>
+                <label htmlFor={`monAnswer-${mon.id}`} className="label">{mon.name}からの応答を貼り付け:</label>
                 <textarea
                   id={`monAnswer-${mon.id}`}
-                  placeholder={`Paste Answer for ${mon.name}`}
+                  placeholder={`${mon.name}からの応答を貼り付け`}
                   value={currentMonitorIdForAnswer === mon.id ? answerFromMonitorInput : ''}
                   onChange={e => { setCurrentMonitorIdForAnswer(mon.id); setAnswerFromMonitorInput(e.target.value); }}
                   className="textarea"
@@ -643,7 +682,7 @@ function ControllerScreen() {
                   disabled={currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput}
                   className={`button ${(currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput) ? 'button-disabled' : ''}`}
                 >
-                  Process Answer
+                  応答を処理
                 </button>
               </div>
             )}
@@ -656,9 +695,9 @@ function ControllerScreen() {
   return (
     <div className="page-container">
       <header className="header">
-        <h1 className="title">Controller Dashboard</h1>
-        <p className="status">Controller Status: {status}</p>
-        {error && <p className="error">Error: {error}</p>}
+        <h1 className="title">コントローラー</h1>
+        <p className="status">状態: {status}</p>
+        {error && <p className="error">エラー: {error}</p>}
       </header>
 
       <div className="main-content-area">
@@ -668,13 +707,13 @@ function ControllerScreen() {
               className={`tab-button ${previewTab === 'cameras' ? 'active' : ''}`}
               onClick={() => setPreviewTab('cameras')}
             >
-              Camera Previews
+              カメラのプレビュー
             </button>
             <button 
               className={`tab-button ${previewTab === 'monitors' ? 'active' : ''}`}
               onClick={() => setPreviewTab('monitors')}
             >
-              Monitor Previews
+              モニターのプレビュー
             </button>
           </div>
 
@@ -701,7 +740,7 @@ function ControllerScreen() {
                   </div>
                 ))}
               {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').length === 0 && (
-                <p className="preview-message">No cameras connected for preview.</p>
+                <p className="preview-message">プレビューできるカメラがありません。</p>
               )}
             </div>
           )}
@@ -712,8 +751,6 @@ function ControllerScreen() {
                 .filter(mon => mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected'))
                 .map(mon => {
                   const currentCameraId = monitorSourceMap[mon.id];
-                  const currentCamera = currentCameraId ? getCameraById(currentCameraId) : null;
-                  
                   return (
                     <div key={mon.id} className="video-container">
                       <h3 className="video-title">{mon.name}</h3>
@@ -740,12 +777,12 @@ function ControllerScreen() {
                           onChange={(e) => switchMonitorCamera(mon.id, e.target.value || null)}
                           className="camera-source-select-compact"
                         >
-                          <option value="">No Signal</option>
+                          <option value="">信号なし</option>
                           {cameras
                             .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
                             .map(cam => (
                               <option key={cam.id} value={cam.id}>
-                                {cam.name} {cam.status === 'connected_streaming' ? '(Streaming)' : '(Connected)'}
+                                {cam.name} {cam.status === 'connected_streaming' ? '(ストリーミング中)' : '(接続済み)'}
                               </option>
                             ))
                           }
@@ -755,7 +792,7 @@ function ControllerScreen() {
                   );
                 })}
               {monitors.filter(mon => mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected')).length === 0 && (
-                <p className="preview-message">No monitors connected for preview.</p>
+                <p className="preview-message">プレビュー可能なモニターがありません。</p>
               )}
             </div>
           )}
@@ -764,11 +801,11 @@ function ControllerScreen() {
         <div className="device-list-container">
           <div className="device-column">
             <section className="card">
-              <h2 className="title title-section">Camera Management</h2>
-              <label htmlFor="newCamOffer" className="label">Register New Camera (Paste Offer):</label>
+              <h2 className="title title-section">カメラ管理</h2>
+              <label htmlFor="newCamOffer" className="label">新規カメラの登録 (オファーを貼り付け):</label>
               <textarea
                 id="newCamOffer"
-                placeholder="Paste Camera's Offer JSON here"
+                placeholder="カメラのオファーJSONをここに貼り付け"
                 value={newCamOfferInput}
                 onChange={e => setNewCamOfferInput(e.target.value)}
                 className="textarea"
@@ -778,25 +815,25 @@ function ControllerScreen() {
                 className={`button ${!newCamOfferInput ? 'button-disabled' : ''}`}
                 disabled={!newCamOfferInput}
               >
-                Process Camera Offer
+                カメラオファーを処理
               </button>
             </section>
             <section className="card">
-              <h3 className="title title-subsection">Registered Cameras ({cameras.length})</h3>
-              {cameras.length === 0 ? <p>No cameras registered.</p> : cameras.map(renderCameraItem)}
+              <h3 className="title title-subsection">登録済みカメラ ({cameras.length})</h3>
+              {cameras.length === 0 ? <p>カメラが登録されていません。</p> : cameras.map(renderCameraItem)}
             </section>
           </div>
 
           <div className="device-column">
             <section className="card">
-              <h2 className="title title-section">Monitor Management</h2>
+              <h2 className="title title-section">モニター管理</h2>
               <button onClick={handleAddNewMonitor} className="button">
-                Add New Monitor
+                新規モニターを追加
               </button>
             </section>
             <section className="card">
-              <h3 className="title title-subsection">Registered Monitors ({monitors.length})</h3>
-              {monitors.length === 0 ? <p>No monitors registered.</p> : monitors.map(renderMonitorItem)}
+              <h3 className="title title-subsection">登録済みモニター ({monitors.length})</h3>
+              {monitors.length === 0 ? <p>モニターが登録されていません。</p> : monitors.map(renderMonitorItem)}
             </section>
           </div>
         </div>
