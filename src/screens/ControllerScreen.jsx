@@ -1,162 +1,26 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store';
+import { saveConnectionState, loadConnectionState } from '../utils/connectionStorage';
+import './ControllerScreen.css';
 
 const CTRL_LOG_PREFIX = "[CtrlScreen]";
-
-const commonStyles = {
-  pageContainer: {
-    width: '100vw',
-    minHeight: '100vh',
-    padding: '0',
-    boxSizing: 'border-box',
-    display: 'flex',
-    flexDirection: 'column',
-    backgroundColor: '#f0f2f5', 
-    gap: '0'
-  },
-  header: {
-    padding: '15px 20px',
-    backgroundColor: '#ffffff',
-    borderRadius: '0',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    width: '100vw',
-    boxSizing: 'border-box',
-  },
-  mainContentArea: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '20px',
-    padding: '20px',
-    flex: 1
-  },
-  title: {
-    margin: '0 0 10px 0',
-    color: '#333',
-    fontSize: '1.8em'
-  },
-  status: {
-    marginBottom: '5px',
-    fontWeight: 'bold',
-    fontSize: '1.1em'
-  },
-  error: {
-    color: '#d9534f',
-    fontWeight: 'bold',
-    marginBottom: '10px'
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: '8px',
-    padding: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '15px'
-  },
-  video: {
-    width: '100%',
-    maxWidth: '720px',
-    height: 'auto',
-    borderRadius: '6px',
-    border: '1px solid #ddd',
-    backgroundColor: '#000',
-    display: 'block',
-    margin: '0 auto 20px auto'
-  },
-  textarea: {
-    width: '100%',
-    minHeight: '100px',
-    padding: '10px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    fontFamily: 'monospace',
-    fontSize: '0.9em',
-    boxSizing: 'border-box'
-  },
-  button: {
-    padding: '10px 15px',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    backgroundColor: '#007bff',
-    color: 'white',
-    fontSize: '0.95em',
-    transition: 'background-color 0.2s ease'
-  },
-  buttonDisabled: {
-    backgroundColor: '#6c757d',
-    cursor: 'not-allowed'
-  },
-  buttonGroup: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-    alignItems: 'center'
-  },
-  label: {
-    display: 'block',
-    marginBottom: '8px',
-    fontWeight: 'bold',
-    color: '#555'
-  },
-  deviceListContainer: {
-    display: 'flex',
-    flexDirection: 'row',
-    gap: '20px',
-    width: '100%'
-  },
-  deviceColumn: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '20px'
-  },
-  deviceListItem: {
-    padding: '15px',
-    border: '1px solid #e0e0e0',
-    borderRadius: '8px',
-    backgroundColor: '#f9f9f9',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  selectedDevice: { backgroundColor: '#e6f7ff' },
-  selectedMonitorDevice: { backgroundColor: '#e0f7fa' },
-  statusBadge: {
-    padding: '3px 8px',
-    borderRadius: '12px',
-    fontSize: '0.8em',
-    color: 'white',
-    display: 'inline-block',
-    marginLeft: '10px'
-  },
-  smallId: { fontSize: '0.8em', color: '#777', marginTop: '5px' }
-};
-
-const getStatusColor = (status) => {
-  if (!status) return '#6c757d';
-  if (status.includes('connected') || status.includes('streaming')) return '#28a745'; 
-  if (status.includes('ready')) return '#17a2b8';    
-  if (status.includes('error')) return '#dc3545';
-  if (status.includes('processing') || status.includes('preparing')) return '#ffc107'; 
-  if (status.startsWith('pc_state_')) return '#6c757d'; 
-  return '#007bff'; 
-};
 
 function ControllerScreen() {
   const {
     cameras, monitors,
     addCamera, setCameraAnswer, updateCameraStatus, getCameraById,
-    addMonitorPlaceholder, 
+    removeCamera, removeMonitor,
+    addMonitorPlaceholder,
     selectCamera, selectedCameraId, // Only used for preview now
-    setOfferForMonitor, setMonitorAnswer, updateMonitorStatus, getMonitorById
+    setOfferForMonitor, setMonitorAnswer, updateMonitorStatus, getMonitorById,
+    initializeCameras, initializeMonitors // ストアに初期化関数があることを想定
   } = useAppStore();
 
   const [newCamOfferInput, setNewCamOfferInput] = useState('');
   const [expandedCameraJson, setExpandedCameraJson] = useState(null);
   const [expandedMonitorJson, setExpandedMonitorJson] = useState(null);
   const [monitorSourceMap, setMonitorSourceMap] = useState({});
-  
+
   const [currentMonitorIdForOffer, setCurrentMonitorIdForOffer] = useState(null);
   const [currentMonitorIdForAnswer, setCurrentMonitorIdForAnswer] = useState(null);
   const [answerFromMonitorInput, setAnswerFromMonitorInput] = useState('');
@@ -167,6 +31,8 @@ function ControllerScreen() {
 
   const [status, setStatus] = useState('Controller Idle');
   const [error, setError] = useState('');
+
+  const [previewTab, setPreviewTab] = useState('cameras'); // 'cameras' or 'monitors'
 
   const createEmptyMediaStream = () => {
     const canvas = document.createElement('canvas');
@@ -179,16 +45,11 @@ function ControllerScreen() {
       ctx.fillStyle = 'white';
       ctx.font = '24px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('No Signal', canvas.width/2, canvas.height/2);
+      ctx.fillText('Connected, But No Signal', canvas.width / 2, canvas.height / 2);
     }
     const videoStream = canvas.captureStream(1);
-    const audioContext = new AudioContext();
-    const oscillator = audioContext.createOscillator();
-    const dest = oscillator.connect(audioContext.createMediaStreamDestination());
-    oscillator.start();
     const [videoTrack] = videoStream.getVideoTracks();
-    const [audioTrack] = dest.stream.getAudioTracks();
-    return new MediaStream([videoTrack, audioTrack]);
+    return new MediaStream([videoTrack]);
   };
 
   const switchMonitorCamera = useCallback(async (monitorId, cameraId) => {
@@ -196,29 +57,43 @@ function ControllerScreen() {
     if (!monitor) return;
 
     const pc = monitorPcRefs.current[monitorId];
-    if (!pc || !monitor.status.includes('connected')) return;
-
-    const newStream = cameraId ? cameraStreamRefs.current[cameraId] : createEmptyMediaStream();
-    if (!newStream) return;
-
-    const senders = pc.getSenders();
-    const tracks = newStream.getTracks();
-    
-    // Replace tracks for each sender
-    for (let i = 0; i < senders.length; i++) {
-      if (tracks[i]) {
-        try {
-          await senders[i].replaceTrack(tracks[i]);
-        } catch (err) {
-          console.error(CTRL_LOG_PREFIX + " Error replacing track for monitor " + monitorId, err);
-          return;
-        }
-      }
+    if (!pc || !monitor.status.includes('connected')) {
+      console.error(CTRL_LOG_PREFIX + " Cannot switch camera: Monitor not connected", monitorId);
+      return;
     }
 
-    setMonitorSourceMap(prev => ({ ...prev, [monitorId]: cameraId }));
-    setStatus(`Switched ${monitor.name} to ${cameraId ? getCameraById(cameraId)?.name || 'unknown camera' : 'No Signal'}`);
-  }, [getCameraById, getMonitorById]);
+    try {
+      const newStream = cameraId ? cameraStreamRefs.current[cameraId] : createEmptyMediaStream();
+      if (!newStream) {
+        console.error(CTRL_LOG_PREFIX + " Cannot switch camera: Stream not available", cameraId);
+        return;
+      }
+
+      // Get only video tracks
+      const videoTracks = newStream.getVideoTracks();
+      if (videoTracks.length === 0) {
+        console.error(CTRL_LOG_PREFIX + " No video tracks available in the stream");
+        return;
+      }
+
+      // Find video sender
+      const videoSender = pc.getSenders().find(sender => sender.track?.kind === 'video');
+      if (!videoSender) {
+        console.error(CTRL_LOG_PREFIX + " No video sender found in the peer connection");
+        return;
+      }
+
+      // Replace only video track
+      await videoSender.replaceTrack(videoTracks[0]);
+
+      setMonitorSourceMap(prev => ({ ...prev, [monitorId]: cameraId }));
+      setStatus(`Switched ${monitor.name} to ${cameraId ? getCameraById(cameraId)?.name || 'unknown camera' : 'No Signal'}`);
+      console.log(CTRL_LOG_PREFIX + ` Successfully switched ${monitor.name} to ${cameraId ? 'camera ' + cameraId : 'No Signal'}`);
+    } catch (err) {
+      console.error(CTRL_LOG_PREFIX + " Error switching camera for monitor " + monitorId, err);
+      setError(`Failed to switch camera for ${monitor.name}: ${err.message}`);
+    }
+  }, [getCameraById, getMonitorById, createEmptyMediaStream]);
 
   useEffect(() => {
     return () => {
@@ -230,13 +105,98 @@ function ControllerScreen() {
     };
   }, []);
 
+  // 接続状態を保存
+  useEffect(() => {
+    saveConnectionState({
+      cameras,
+      monitors,
+      monitorSourceMap,
+    });
+  }, [cameras, monitors, monitorSourceMap]);
+
+  // 初期化時に接続状態を復元
+  useEffect(() => {
+    const state = loadConnectionState();
+    
+    // カメラとモニターの状態を復元
+    if (state.cameras.length > 0) {
+      initializeCameras(state.cameras);
+    }
+    if (state.monitors.length > 0) {
+      initializeMonitors(state.monitors);
+    }
+    
+    // モニターとカメラの接続マップを復元
+    setMonitorSourceMap(state.monitorSourceMap);
+
+    // 各デバイスの接続を再確立
+    state.cameras.forEach(async (cam) => {
+      if (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected') {
+        try {
+          const pc = new RTCPeerConnection({});
+          cameraPcRefs.current[cam.id] = pc;
+          
+          // 接続の再確立処理
+          if (cam.sdp) {
+            await pc.setRemoteDescription(new RTCSessionDescription(cam.sdp));
+            for (const candidate of (cam.iceCandidates || [])) {
+              if (candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate))
+                  .catch(e => console.warn("Ctrl: Error adding restored cam ICE: " + e));
+              }
+            }
+          }
+        } catch (err) {
+          console.error(CTRL_LOG_PREFIX + " Error restoring camera connection:", err);
+          updateCameraStatus(cam.id, 'error_connection_restore');
+        }
+      }
+    });
+
+    state.monitors.forEach(async (mon) => {
+      if (mon.status === 'connected_to_controller' || mon.status.includes('pc_state_connected')) {
+        try {
+          const pc = new RTCPeerConnection({});
+          monitorPcRefs.current[mon.id] = pc;
+          
+          // 接続の再確立処理
+          if (mon.sdp) {
+            await pc.setRemoteDescription(new RTCSessionDescription(mon.sdp));
+            for (const candidate of (mon.iceCandidates || [])) {
+              if (candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate))
+                  .catch(e => console.warn("Ctrl: Error adding restored mon ICE: " + e));
+              }
+            }
+          }
+
+          // まずNo Signal画面を設定
+          await switchMonitorCamera(mon.id, null);
+          setStatus(`Monitor ${mon.name} restored. No Signal screen is set.`);
+
+          // 保存されていたカメラソースがあれば、それを後から接続
+          const sourceId = state.monitorSourceMap[mon.id];
+          if (sourceId && state.cameras.find(cam => cam.id === sourceId)) {
+            setTimeout(async () => {
+              await switchMonitorCamera(mon.id, sourceId);
+              setStatus(`Monitor ${mon.name} restored with camera source.`);
+            }, 1000); // 1秒後にカメラソースを接続
+          }
+        } catch (err) {
+          console.error(CTRL_LOG_PREFIX + " Error restoring monitor connection:", err);
+          updateMonitorStatus(mon.id, 'error_connection_restore');
+        }
+      }
+    });
+  }, []);
+
   // Existing handlers with updated monitor offer handling
   const handleProcessNewCameraOffer = async () => {
     if (!newCamOfferInput) {
       setError("New Camera Offer input is empty.");
       return;
     }
-    
+
     setStatus("Processing new camera offer...");
     setError('');
     let parsedRawOffer;
@@ -259,10 +219,13 @@ function ControllerScreen() {
     setExpandedCameraJson(newCamId);
 
     try {
-      const pc = new RTCPeerConnection({});
+      const pc = new RTCPeerConnection({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: true
+      });
       cameraPcRefs.current[newCamId] = pc;
       const collectedIceCandidates = [];
-      
+
       pc.onicecandidate = event => {
         if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
       };
@@ -286,31 +249,46 @@ function ControllerScreen() {
       };
 
       pc.ontrack = event => {
-        const stream = event.streams && event.streams[0] ? event.streams[0] : 
-                      (event.track ? new MediaStream([event.track]) : null);
-        if (stream) {
-          cameraStreamRefs.current[newCamId] = stream;
-          updateCameraStatus(newCamId, 'connected_streaming');
-          setStatus("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connected and streaming.");
-        }
+        if (event.track.kind !== 'video') return; // Only handle video tracks
+        const stream = new MediaStream([event.track]);
+        cameraStreamRefs.current[newCamId] = stream;
+        updateCameraStatus(newCamId, 'connected_streaming');
+        setStatus("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connected and streaming.");
       };
 
       pc.onconnectionstatechange = () => {
         const camState = pc.connectionState;
         updateCameraStatus(newCamId, "pc_state_" + camState);
         if (camState === 'failed') {
-          setError("Camera "+ (getCameraById(newCamId)?.name || newCamId) + " connection failed.");
+          setError("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connection failed.");
         }
       };
 
-      await pc.setRemoteDescription(new RTCSessionDescription(parsedRawOffer.sdp));
+      // Modify the SDP to only accept video tracks and remove BUNDLE audio
+      const modifiedOffer = {
+        ...parsedRawOffer.sdp,
+        sdp: parsedRawOffer.sdp.sdp
+          .replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
+          .replace(/a=group:BUNDLE audio video/g, 'a=group:BUNDLE video')
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(modifiedOffer));
       for (const candidate of (parsedRawOffer.iceCandidates || [])) {
         if (candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(e => console.warn("Ctrl: Error adding cam ICE: "+e));
+            .catch(e => console.warn("Ctrl: Error adding cam ICE: " + e));
         }
       }
-      const localAnswer = await pc.createAnswer();
+      const localAnswer = await pc.createAnswer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: true
+      });
+      
+      // Modify the answer to only include video and remove BUNDLE audio
+      localAnswer.sdp = localAnswer.sdp
+        .replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
+        .replace(/a=group:BUNDLE audio video/g, 'a=group:BUNDLE video');
+      
       await pc.setLocalDescription(localAnswer);
     } catch (err) {
       setError("Error processing camera " + (getCameraById(newCamId)?.name || newCamId) + " offer: " + err.toString());
@@ -336,13 +314,19 @@ function ControllerScreen() {
 
     try {
       if (monitorPcRefs.current[monitorId]) monitorPcRefs.current[monitorId].close();
-      const pc = new RTCPeerConnection({});
+      const pc = new RTCPeerConnection({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: true
+      });
       monitorPcRefs.current[monitorId] = pc;
       const collectedIceCandidates = [];
 
       // Start with empty stream - camera can be selected later
       const emptyStream = createEmptyMediaStream();
-      emptyStream.getTracks().forEach(track => pc.addTrack(track, emptyStream));
+      const videoTrack = emptyStream.getVideoTracks()[0];
+      if (videoTrack) {
+        pc.addTrack(videoTrack, emptyStream);
+      }
 
       pc.onicecandidate = event => {
         if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
@@ -351,7 +335,7 @@ function ControllerScreen() {
       pc.onicegatheringstatechange = () => {
         if (pc.iceGatheringState === 'complete') {
           if (!pc.localDescription) {
-            setError("Failed to generate offer for Monitor "+monitor.name+": No local desc.");
+            setError("Failed to generate offer for Monitor " + monitor.name + ": No local desc.");
             updateMonitorStatus(monitorId, 'error_generating_offer');
             return;
           }
@@ -369,15 +353,24 @@ function ControllerScreen() {
 
       pc.onconnectionstatechange = () => {
         const monState = pc.connectionState;
-        updateMonitorStatus(monitorId, "pc_state_"+monState);
+        updateMonitorStatus(monitorId, "pc_state_" + monState);
         if (monState === 'failed') {
-          setError("Monitor "+monitor.name+" connection failed.");
+          setError("Monitor " + monitor.name + " connection failed.");
         } else if (monState === 'connected') {
           setStatus("Monitor " + monitor.name + " connected. Use camera selector to choose source.");
         }
       };
 
-      const localOffer = await pc.createOffer();
+      const localOffer = await pc.createOffer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: true
+      });
+      
+      // Modify the offer to only include video and remove BUNDLE audio
+      localOffer.sdp = localOffer.sdp
+        .replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
+        .replace(/a=group:BUNDLE audio video/g, 'a=group:BUNDLE video');
+      
       await pc.setLocalDescription(localOffer);
 
     } catch (err) {
@@ -411,26 +404,35 @@ function ControllerScreen() {
         return;
       }
 
-      await pc.setRemoteDescription(new RTCSessionDescription(answerPayload.sdp));
+      // Modify the answer to only include video
+      const modifiedAnswer = {
+        ...answerPayload.sdp,
+        sdp: answerPayload.sdp.sdp.replace(/m=audio.*\r\n(?:.*\r\n)*?(?=m=|$)/g, '')
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(modifiedAnswer));
       for (const candidate of (answerPayload.iceCandidates || [])) {
         if (candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(e => console.warn("Ctrl: Error adding mon ICE: "+e));
+            .catch(e => console.warn("Ctrl: Error adding mon ICE: " + e));
         }
       }
 
       setMonitorAnswer(monitorId, answerFromMonitorInput, answerPayload.iceCandidates || [], answerPayload.sdp);
       updateMonitorStatus(monitorId, 'connected_to_controller');
-      setStatus("Monitor " + monitor.name + " connected.");
       
+      // 接続が成功したら、自動的にNo Signal画面を設定
+      await switchMonitorCamera(monitorId, null);
+      setStatus("Monitor " + monitor.name + " connected. No Signal screen is set.");
+
     } catch (err) {
-      setError("Error processing answer for " + monitor.name + ": " + err.toString());
-      updateMonitorStatus(monitorId, 'error_processing_answer');
+      console.error(CTRL_LOG_PREFIX + " Error processing answer for monitor " + monitorId, err);
+      setError(`Failed to process answer for ${monitor.name}: ${err.message}`);
     }
 
     setAnswerFromMonitorInput('');
     setCurrentMonitorIdForAnswer(null);
-  }, [answerFromMonitorInput, getMonitorById, setMonitorAnswer, updateMonitorStatus]);
+  }, [answerFromMonitorInput, getMonitorById, setMonitorAnswer, updateMonitorStatus, switchMonitorCamera]);
 
   const handleAddNewMonitor = useCallback(() => {
     const newMonitorId = addMonitorPlaceholder();
@@ -454,46 +456,92 @@ function ControllerScreen() {
       });
   };
 
+  const handleRemoveCamera = useCallback(async (cameraId) => {
+    const camera = getCameraById(cameraId);
+    if (!camera) return;
+
+    // WebRTC接続を閉じる
+    if (cameraPcRefs.current[cameraId]) {
+      cameraPcRefs.current[cameraId].close();
+      delete cameraPcRefs.current[cameraId];
+    }
+
+    // ストリームを停止
+    if (cameraStreamRefs.current[cameraId]) {
+      cameraStreamRefs.current[cameraId].getTracks().forEach(track => track.stop());
+      delete cameraStreamRefs.current[cameraId];
+    }
+
+    // ストアから削除
+    removeCamera(cameraId);
+    setStatus(`Camera ${camera.name} has been removed.`);
+  }, [getCameraById, removeCamera]);
+
+  const handleRemoveMonitor = useCallback(async (monitorId) => {
+    const monitor = getMonitorById(monitorId);
+    if (!monitor) return;
+
+    // WebRTC接続を閉じる
+    if (monitorPcRefs.current[monitorId]) {
+      monitorPcRefs.current[monitorId].close();
+      delete monitorPcRefs.current[monitorId];
+    }
+
+    // モニターソースマップから削除
+    setMonitorSourceMap(prev => {
+      const newMap = { ...prev };
+      delete newMap[monitorId];
+      return newMap;
+    });
+
+    // ストアから削除
+    removeMonitor(monitorId);
+    setStatus(`Monitor ${monitor.name} has been removed.`);
+  }, [getMonitorById, removeMonitor]);
+
   const renderCameraItem = (cam) => (
-    <div key={cam.id} style={{
-      ...commonStyles.deviceListItem,
-      ...(selectedCameraId === cam.id && commonStyles.selectedDevice)
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontWeight: 'bold' }}>{cam.name}</span>
-        <span style={{...commonStyles.statusBadge, backgroundColor: getStatusColor(cam.status) }}>{cam.status}</span>
+    <div key={cam.id} className={`device-list-item ${selectedCameraId === cam.id ? 'selected-device' : ''}`}>
+      <div className="device-header">
+        <span className="device-name">{cam.name}</span>
+        <span className="status-badge" data-status={cam.status}>{cam.status}</span>
       </div>
-      <div style={commonStyles.smallId}>ID: {cam.id}</div>
-      <div style={commonStyles.buttonGroup}>
-        <button 
-          onClick={() => selectCamera(cam.id)} 
+      <div className="small-id">ID: {cam.id}</div>
+      <div className="button-group">
+        <button
+          onClick={() => selectCamera(cam.id)}
           disabled={selectedCameraId === cam.id}
-          style={{...commonStyles.button, ...( selectedCameraId === cam.id && commonStyles.buttonDisabled )}}
+          className={`button ${selectedCameraId === cam.id ? 'button-disabled' : ''}`}
         >
           {selectedCameraId === cam.id ? 'Current Source' :
-           (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'Select as Source' :
-            (cam.status === 'track_received_no_stream' ? 'Stream Issue' : 'Not Streaming')
-           )}
+            (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'Select as Source' :
+              (cam.status === 'track_received_no_stream' ? 'Stream Issue' : 'Not Streaming')
+            )}
         </button>
         <button
           onClick={() => setExpandedCameraJson(expandedCameraJson === cam.id ? null : cam.id)}
-          style={commonStyles.button}
+          className="button"
         >
           {expandedCameraJson === cam.id ? 'Hide' : 'Show'} Answer
         </button>
+        <button
+          onClick={() => handleRemoveCamera(cam.id)}
+          className="button button-danger"
+        >
+          Remove Camera
+        </button>
       </div>
       {expandedCameraJson === cam.id && cam.answerJson && (
-        <div style={{ marginTop: '10px'}}>
-          <label htmlFor={`camAnswer-${cam.id}`} style={commonStyles.label}>Answer for {cam.name}:</label>
+        <div className="expanded-content">
+          <label htmlFor={`camAnswer-${cam.id}`} className="label">Answer for {cam.name}:</label>
           <textarea
             id={`camAnswer-${cam.id}`}
             readOnly
             value={cam.answerJson}
-            style={commonStyles.textarea}
+            className="textarea"
           />
           <button
             onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
-            style={{...commonStyles.button, marginTop: '5px'}}
+            className="button"
           >
             Copy Answer
           </button>
@@ -507,29 +555,21 @@ function ControllerScreen() {
     const isConnected = mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected');
 
     return (
-      <div key={mon.id} style={{
-        ...commonStyles.deviceListItem
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 'bold' }}>{mon.name}</span>
-          <span style={{...commonStyles.statusBadge, backgroundColor: getStatusColor(mon.status) }}>{mon.status}</span>
+      <div key={mon.id} className="device-list-item">
+        <div className="device-header">
+          <span className="device-name">{mon.name}</span>
+          <span className="status-badge" data-status={mon.status}>{mon.status}</span>
         </div>
-        <div style={commonStyles.smallId}>ID: {mon.id}</div>
+        <div className="small-id">ID: {mon.id}</div>
 
         {isConnected && (
-          <div style={{ marginTop: '10px' }}>
-            <label htmlFor={`camera-select-${mon.id}`} style={commonStyles.label}>Select Camera Source:</label>
+          <div className="expanded-content">
+            <label htmlFor={`camera-select-${mon.id}`} className="label">Select Camera Source:</label>
             <select
               id={`camera-select-${mon.id}`}
               value={currentCameraId || ''}
               onChange={(e) => switchMonitorCamera(mon.id, e.target.value || null)}
-              style={{
-                ...commonStyles.button,
-                backgroundColor: 'white',
-                color: '#333',
-                width: '100%',
-                padding: '8px'
-              }}
+              className="camera-source-select button"
             >
               <option value="">No Signal</option>
               {cameras
@@ -544,38 +584,44 @@ function ControllerScreen() {
           </div>
         )}
 
-        <div style={commonStyles.buttonGroup}>
+        <div className="button-group">
           <button
             onClick={() => handlePrepareOfferForMonitor(mon.id)}
             disabled={mon.status === 'connected_to_controller' || mon.status?.includes('error')}
-            style={{...commonStyles.button, ...(mon.status === 'connected_to_controller' || mon.status?.includes('error') && commonStyles.buttonDisabled)}}
+            className={`button ${mon.status === 'connected_to_controller' || mon.status?.includes('error') ? 'button-disabled' : ''}`}
           >
             {mon.status === 'connected_to_controller' ? 'Connected' : 'Prepare Offer'}
           </button>
           <button
             onClick={() => setExpandedMonitorJson(expandedMonitorJson === mon.id ? null : mon.id)}
-            style={commonStyles.button}
+            className="button"
           >
             {expandedMonitorJson === mon.id ? 'Hide' : 'Show'} Details
+          </button>
+          <button
+            onClick={() => handleRemoveMonitor(mon.id)}
+            className="button button-danger"
+          >
+            Remove Monitor
           </button>
         </div>
         
         {expandedMonitorJson === mon.id && (
-          <div style={{marginTop: '10px', display: 'flex', flexDirection:'column', gap: '15px'}}>
+          <div className="expanded-content">
             {mon.offerJsonFromController && (
               <div>
-                <label htmlFor={`monOffer-${mon.id}`} style={commonStyles.label}>
+                <label htmlFor={`monOffer-${mon.id}`} className="label">
                   Offer for {mon.name}: {currentCameraId ? `(from ${getCameraById(currentCameraId)?.name || 'selected camera'})` : '(No Signal)'}
                 </label>
                 <textarea
                   id={`monOffer-${mon.id}`}
                   readOnly
                   value={mon.offerJsonFromController}
-                  style={commonStyles.textarea}
+                  className="textarea"
                 />
                 <button
                   onClick={() => copyToClipboard(mon.offerJsonFromController, "Offer for Monitor")}
-                  style={{...commonStyles.button, marginTop: '5px'}}
+                  className="button"
                 >
                   Copy Offer
                 </button>
@@ -583,19 +629,19 @@ function ControllerScreen() {
             )}
             {mon.status !== 'connected_to_controller' && mon.offerJsonFromController && (
               <div>
-                <label htmlFor={`monAnswer-${mon.id}`} style={commonStyles.label}>Paste Answer from {mon.name}:</label>
+                <label htmlFor={`monAnswer-${mon.id}`} className="label">Paste Answer from {mon.name}:</label>
                 <textarea
                   id={`monAnswer-${mon.id}`}
                   placeholder={`Paste Answer for ${mon.name}`}
                   value={currentMonitorIdForAnswer === mon.id ? answerFromMonitorInput : ''}
                   onChange={e => { setCurrentMonitorIdForAnswer(mon.id); setAnswerFromMonitorInput(e.target.value); }}
-                  style={commonStyles.textarea}
+                  className="textarea"
                   disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
                 />
                 <button
                   onClick={() => handleAcceptAnswerFromMonitor(mon.id)}
                   disabled={currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput}
-                  style={{...commonStyles.button, marginTop: '5px', ...((currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput) && commonStyles.buttonDisabled)}}
+                  className={`button ${(currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput) ? 'button-disabled' : ''}`}
                 >
                   Process Answer
                 </button>
@@ -608,70 +654,148 @@ function ControllerScreen() {
   };
 
   return (
-    <div style={commonStyles.pageContainer}>
-      <header style={commonStyles.header}>
-        <h1 style={commonStyles.title}>Controller Dashboard</h1>
-        <p style={commonStyles.status}>Controller Status: {status}</p>
-        {error && <p style={commonStyles.error}>Error: {error}</p>}
+    <div className="page-container">
+      <header className="header">
+        <h1 className="title">Controller Dashboard</h1>
+        <p className="status">Controller Status: {status}</p>
+        {error && <p className="error">Error: {error}</p>}
       </header>
 
-      <div style={commonStyles.mainContentArea}>
-        {selectedCameraId && selectedCameraStream && (
-          <section style={commonStyles.card}>
-            <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>
-              Live Preview: {cameras.find(c => c.id === selectedCameraId)?.name || 'Selected Camera'}
-            </h2>
-            <video
-              id="selected-camera-video-preview"
-              ref={el => { if (el && el.srcObject !== selectedCameraStream) el.srcObject = selectedCameraStream; }}
-              autoPlay
-              playsInline
-              muted
-              style={commonStyles.video}
-            />
-          </section>
-        )}
-        {!selectedCameraId && (
-          <section style={commonStyles.card}>
-            <p style={{textAlign: 'center', margin: '20px'}}>No camera selected for preview.</p>
-          </section>
-        )}
+      <div className="main-content-area">
+        <section className="card">
+          <div className="preview-tabs">
+            <button 
+              className={`tab-button ${previewTab === 'cameras' ? 'active' : ''}`}
+              onClick={() => setPreviewTab('cameras')}
+            >
+              Camera Previews
+            </button>
+            <button 
+              className={`tab-button ${previewTab === 'monitors' ? 'active' : ''}`}
+              onClick={() => setPreviewTab('monitors')}
+            >
+              Monitor Previews
+            </button>
+          </div>
 
-        <div style={commonStyles.deviceListContainer}>
-          <div style={commonStyles.deviceColumn}>
-            <section style={commonStyles.card}>
-              <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Camera Management</h2>
-              <label htmlFor="newCamOffer" style={commonStyles.label}>Register New Camera (Paste Offer):</label>
+          {previewTab === 'cameras' && (
+            <div className="video-grid">
+              {cameras
+                .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
+                .map(cam => (
+                  <div key={cam.id} className="video-container">
+                    <h3 className="video-title">{cam.name}</h3>
+                    <video
+                      id={`camera-preview-${cam.id}`}
+                      ref={element => {
+                        if (element && cameraStreamRefs.current[cam.id]) {
+                          element.srcObject = cameraStreamRefs.current[cam.id];
+                        }
+                      }}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="video"
+                    />
+                    <span className="status-badge" data-status={cam.status}>{cam.status}</span>
+                  </div>
+                ))}
+              {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').length === 0 && (
+                <p className="preview-message">No cameras connected for preview.</p>
+              )}
+            </div>
+          )}
+
+          {previewTab === 'monitors' && (
+            <div className="video-grid">
+              {monitors
+                .filter(mon => mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected'))
+                .map(mon => {
+                  const currentCameraId = monitorSourceMap[mon.id];
+                  const currentCamera = currentCameraId ? getCameraById(currentCameraId) : null;
+                  
+                  return (
+                    <div key={mon.id} className="video-container">
+                      <h3 className="video-title">{mon.name}</h3>
+                      <video
+                        id={`monitor-preview-${mon.id}`}
+                        ref={element => {
+                          if (element && monitorPcRefs.current[mon.id]) {
+                            const sender = monitorPcRefs.current[mon.id].getSenders().find(s => s.track?.kind === 'video');
+                            if (sender && sender.track) {
+                              const stream = new MediaStream([sender.track]);
+                              element.srcObject = stream;
+                            }
+                          }
+                        }}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="video"
+                      />
+                      <div className="video-info">
+                        <span className="status-badge" data-status={mon.status}>{mon.status}</span>
+                        <select
+                          value={currentCameraId || ''}
+                          onChange={(e) => switchMonitorCamera(mon.id, e.target.value || null)}
+                          className="camera-source-select-compact"
+                        >
+                          <option value="">No Signal</option>
+                          {cameras
+                            .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
+                            .map(cam => (
+                              <option key={cam.id} value={cam.id}>
+                                {cam.name} {cam.status === 'connected_streaming' ? '(Streaming)' : '(Connected)'}
+                              </option>
+                            ))
+                          }
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              {monitors.filter(mon => mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected')).length === 0 && (
+                <p className="preview-message">No monitors connected for preview.</p>
+              )}
+            </div>
+          )}
+        </section>
+
+        <div className="device-list-container">
+          <div className="device-column">
+            <section className="card">
+              <h2 className="title title-section">Camera Management</h2>
+              <label htmlFor="newCamOffer" className="label">Register New Camera (Paste Offer):</label>
               <textarea
                 id="newCamOffer"
                 placeholder="Paste Camera's Offer JSON here"
                 value={newCamOfferInput}
                 onChange={e => setNewCamOfferInput(e.target.value)}
-                style={commonStyles.textarea}
+                className="textarea"
               />
               <button
                 onClick={handleProcessNewCameraOffer}
-                style={{...commonStyles.button, ...(!newCamOfferInput && commonStyles.buttonDisabled)}}
+                className={`button ${!newCamOfferInput ? 'button-disabled' : ''}`}
                 disabled={!newCamOfferInput}
               >
                 Process Camera Offer
               </button>
             </section>
-            <section style={commonStyles.card}>
-              <h3 style={{...commonStyles.title, fontSize: '1.2em'}}>Registered Cameras ({cameras.length})</h3>
+            <section className="card">
+              <h3 className="title title-subsection">Registered Cameras ({cameras.length})</h3>
               {cameras.length === 0 ? <p>No cameras registered.</p> : cameras.map(renderCameraItem)}
             </section>
           </div>
 
-          <div style={commonStyles.deviceColumn}>
-            <section style={commonStyles.card}>
-              <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Monitor Management</h2>
-              <button onClick={handleAddNewMonitor} style={commonStyles.button}>
+          <div className="device-column">
+            <section className="card">
+              <h2 className="title title-section">Monitor Management</h2>
+              <button onClick={handleAddNewMonitor} className="button">
                 Add New Monitor
               </button>
             </section>
-            <section style={commonStyles.card}>
-              <h3 style={{...commonStyles.title, fontSize: '1.2em'}}>Registered Monitors ({monitors.length})</h3>
+            <section className="card">
+              <h3 className="title title-subsection">Registered Monitors ({monitors.length})</h3>
               {monitors.length === 0 ? <p>No monitors registered.</p> : monitors.map(renderMonitorItem)}
             </section>
           </div>

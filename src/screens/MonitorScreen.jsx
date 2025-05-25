@@ -54,13 +54,41 @@ const commonStyles = {
   },
   video: {
     width: '100%',
-    maxWidth: '720px',
+    maxWidth: '100%',
     height: 'auto',
     borderRadius: '6px',
     border: '1px solid #ddd',
     backgroundColor: '#000',
     display: 'block',
-    margin: '0 auto 20px auto'
+    margin: '0 auto'
+  },
+  videoContainer: {
+    position: 'relative',
+    width: '100%',
+    backgroundColor: '#000',
+    borderRadius: '6px',
+    overflow: 'hidden'
+  },
+  fullscreenButton: {
+    position: 'absolute',
+    bottom: '20px',
+    right: '20px',
+    padding: '10px 15px',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    zIndex: 1000,
+    transition: 'background-color 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px'
+  },
+  fullscreenIcon: {
+    width: '16px',
+    height: '16px',
+    fill: 'currentColor'
   },
   textarea: {
     width: '100%',
@@ -105,6 +133,8 @@ function MonitorScreen() {
   const videoRef = useRef(null);
   const collectedIceCandidatesRef = useRef([]);
   const answerTextareaRef = useRef(null);
+  const videoContainerRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -118,6 +148,31 @@ function MonitorScreen() {
       }
     };
   }, []);
+
+  // フルスクリーン状態の変更を監視
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === videoContainerRef.current);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // フルスクリーンの切り替え
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await videoContainerRef.current.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      setError("Fullscreen error: " + err.message);
+    }
+  };
 
   const processOfferAndCreateAnswer = async () => {
     if (!controllerOfferJsonInput) {
@@ -297,12 +352,49 @@ function MonitorScreen() {
 
         <section style={commonStyles.card}>
           <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Remote Video Feed</h2>
-          <video ref={videoRef} autoPlay playsInline style={commonStyles.video} />
-          {!remoteStreamRef.current && (
-            <div style={{...commonStyles.video, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#333', color: 'white', minHeight: '200px'}}>
+          <div ref={videoContainerRef} style={commonStyles.videoContainer}>
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              playsInline 
+              style={commonStyles.video} 
+            />
+            {remoteStreamRef.current && (
+              <button
+                onClick={toggleFullscreen}
+                style={commonStyles.fullscreenButton}
+                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                {isFullscreen ? (
+                  <svg style={commonStyles.fullscreenIcon} viewBox="0 0 24 24">
+                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+                  </svg>
+                ) : (
+                  <svg style={commonStyles.fullscreenIcon} viewBox="0 0 24 24">
+                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                  </svg>
+                )}
+                {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              </button>
+            )}
+            {!remoteStreamRef.current && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#333',
+                color: 'white',
+                minHeight: '200px'
+              }}>
                 <p>Waiting for video stream from Controller...</p>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </div>

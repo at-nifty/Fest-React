@@ -16,6 +16,17 @@ export const useAppStore = create((set, get) => ({
   selectedMonitorIds: [], // Array of monitor IDs
 
   // ---- Actions ----
+  // == Initialization ==
+  initializeCameras: (cameras) => {
+    console.log(STORE_LOG_PREFIX + " Initializing cameras from saved state: ", cameras);
+    set({ cameras });
+  },
+
+  initializeMonitors: (monitors) => {
+    console.log(STORE_LOG_PREFIX + " Initializing monitors from saved state: ", monitors);
+    set({ monitors });
+  },
+
   setRole: (role) => {
     console.log(STORE_LOG_PREFIX + " Setting role to: " + role);
     set({ role });
@@ -37,6 +48,20 @@ export const useAppStore = create((set, get) => ({
     console.log(STORE_LOG_PREFIX + " Adding new camera: ", newCamera);
     set((state) => ({ cameras: [...state.cameras, newCamera] }));
     return newCameraId;
+  },
+
+  removeCamera: (cameraId) => {
+    console.log(STORE_LOG_PREFIX + " Removing camera: " + cameraId);
+    set((state) => ({
+      cameras: state.cameras.filter(cam => cam.id !== cameraId),
+      // カメラが削除された場合、関連するモニターの接続も解除
+      monitors: state.monitors.map(mon => {
+        if (mon.status === 'connected_to_controller' && state.monitorSourceMap?.[mon.id] === cameraId) {
+          return { ...mon, status: 'connection_source_removed' };
+        }
+        return mon;
+      }),
+    }));
   },
 
   setCameraAnswer: (cameraId, answerJson, iceCandidatesForControllerAnswer) => {
@@ -82,6 +107,13 @@ export const useAppStore = create((set, get) => ({
     return newMonitorId;
   },
   
+  removeMonitor: (monitorId) => {
+    console.log(STORE_LOG_PREFIX + " Removing monitor: " + monitorId);
+    set((state) => ({
+      monitors: state.monitors.filter(mon => mon.id !== monitorId),
+    }));
+  },
+
   setOfferForMonitor: (monitorId, offerJsonFromController, iceCandidatesForControllerOffer, rawOfferFromController) => {
     console.log(STORE_LOG_PREFIX + " Setting offer for monitor " + monitorId + ": ", { offerJsonFromController: offerJsonFromController.substring(0,50) + "...", iceCandidatesForControllerOffer });
     set((state) => ({
