@@ -1,10 +1,10 @@
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import useStore from './store';
+import { useAppStore } from './store';
 
 function RoleSelectionScreen() {
   const navigate = useNavigate();
-  const setRole = useStore((state) => state.setRole);
+  const setRole = useAppStore((state) => state.setRole);
 
   const handleRoleSelection = useCallback((selectedRole) => {
     setRole(selectedRole);
@@ -32,4 +32,4 @@ function RoleSelectionScreen() {
   );
 }
 
-export default RoleSelectionScreen; 
+export default RoleSelectionScreen;

@@ -1,267 +1,309 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const MON_LOG_PREFIX = "[MonScreen]";
+const MON_LOG_PREFIX = "[MonitorScreen]";
+
+// Using commonStyles similar to CameraScreen for consistency
+const commonStyles = {
+  pageContainer: {
+    width: '100vw',
+    minHeight: '100vh',
+    padding: '0',
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    backgroundColor: '#f0f2f5', 
+    gap: '0'
+  },
+  header: {
+    padding: '15px 20px',
+    backgroundColor: '#ffffff',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    width: '100vw',
+    boxSizing: 'border-box',
+  },
+  mainContentArea: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+    padding: '20px',
+    flex: 1
+  },
+  title: {
+    margin: '0 0 10px 0',
+    color: '#333',
+    fontSize: '1.8em'
+  },
+  status: {
+    marginBottom: '5px',
+    fontWeight: 'bold',
+    fontSize: '1.1em'
+  },
+  error: {
+    color: '#d9534f',
+    fontWeight: 'bold',
+    marginBottom: '10px'
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: '8px',
+    padding: '20px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '15px'
+  },
+  video: {
+    width: '100%',
+    maxWidth: '720px',
+    height: 'auto',
+    borderRadius: '6px',
+    border: '1px solid #ddd',
+    backgroundColor: '#000',
+    display: 'block',
+    margin: '0 auto 20px auto'
+  },
+  textarea: {
+    width: '100%',
+    minHeight: '120px',
+    padding: '10px',
+    border: '1px solid #ccc',
+    borderRadius: '4px',
+    fontFamily: 'monospace',
+    fontSize: '0.9em',
+    boxSizing: 'border-box'
+  },
+  button: {
+    padding: '12px 20px',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    backgroundColor: '#007bff',
+    color: 'white',
+    fontSize: '1em',
+    transition: 'background-color 0.2s ease'
+  },
+  buttonDisabled: {
+    backgroundColor: '#6c757d',
+    cursor: 'not-allowed'
+  },
+  label: {
+    display: 'block',
+    marginBottom: '8px',
+    fontWeight: 'bold',
+    color: '#555'
+  }
+};
 
 function MonitorScreen() {
-  console.log(`${MON_LOG_PREFIX} Component RENDERED`);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [offerSignalInput, setOfferSignalInput] = useState('');
-  const [answerSignal, setAnswerSignal] = useState('');
-  const [status, setStatus] = useState('Waiting for Offer');
+  console.log(MON_LOG_PREFIX + " Component RENDERED");
+  const [controllerOfferJsonInput, setControllerOfferJsonInput] = useState('');
+  const [monitorAnswerJson, setMonitorAnswerJson] = useState('');
+  const [status, setStatus] = useState('Waiting for Offer from Controller');
   const [error, setError] = useState('');
-
   const pcRef = useRef(null);
+  const remoteStreamRef = useRef(null);
+  const videoRef = useRef(null);
   const collectedIceCandidatesRef = useRef([]);
-  const remoteVideoRef = useRef(null);
-  const answerSignalTextareaRef = useRef(null);
+  const answerTextareaRef = useRef(null);
 
   useEffect(() => {
-    console.log(`${MON_LOG_PREFIX} useEffect for cleanup triggered.`);
     return () => {
-      console.log(`${MON_LOG_PREFIX} Cleanup effect: Closing PeerConnection.`);
       if (pcRef.current) {
         pcRef.current.close();
         pcRef.current = null;
       }
-      if (remoteStream) {
-        console.log(`${MON_LOG_PREFIX} Cleanup effect: Stopping remote stream tracks.`);
-        remoteStream.getTracks().forEach(track => track.stop());
-        setRemoteStream(null);
+      if (remoteStreamRef.current) {
+        remoteStreamRef.current.getTracks().forEach(track => track.stop());
+        remoteStreamRef.current = null;
       }
     };
-  }, [remoteStream]); // remoteStream added to dependencies to ensure cleanup if it changes
+  }, []);
 
   const processOfferAndCreateAnswer = async () => {
-    console.log(`${MON_LOG_PREFIX} processOfferAndCreateAnswer called with input:`, offerSignalInput);
-    if (!offerSignalInput) {
-      console.error(`${MON_LOG_PREFIX} Offer signal input is empty.`);
-      setError("Monitor: Offer signal from Controller is empty.");
+    if (!controllerOfferJsonInput) {
+      setError("Monitor: Controller Offer input is empty.");
       return;
     }
+    setStatus("Monitor: Processing Offer...");
+    setError('');
+    collectedIceCandidatesRef.current = [];
+    setMonitorAnswerJson(''); // Clear previous answer
 
-    let offerSignalPayload;
+    let offerPayload;
     try {
-      offerSignalPayload = JSON.parse(offerSignalInput);
-      console.log(`${MON_LOG_PREFIX} Parsed offer signal payload:`, offerSignalPayload);
+      offerPayload = JSON.parse(controllerOfferJsonInput);
     } catch (e) {
-      console.error(`${MON_LOG_PREFIX} Invalid JSON in offer:`, e);
-      setError(`Monitor: Invalid JSON in offer: ${e.message}`);
+      setError("Monitor: Invalid JSON in Controller Offer: " + e.message);
+      setStatus("Monitor: Failed to parse offer.");
       return;
     }
 
-    if (!offerSignalPayload || typeof offerSignalPayload.sdp !== 'object' || !offerSignalPayload.sdp.type || !offerSignalPayload.sdp.sdp) {
-      console.error(`${MON_LOG_PREFIX} Invalid offer signal structure:`, offerSignalPayload);
-      setError("Monitor: Invalid offer signal received (missing sdp or sdp fields).");
+    if (!offerPayload || typeof offerPayload.sdp !== 'object' || offerPayload.sdp.type !== 'offer') {
+      setError("Monitor: Invalid Controller Offer signal structure.");
+      setStatus("Monitor: Invalid offer structure.");
       return;
-    }
-    if (offerSignalPayload.sdp.type !== 'offer') {
-        console.warn(`${MON_LOG_PREFIX} Expected SDP type 'offer' but got '${offerSignalPayload.sdp.type}'.`);
-        // setError("Monitor: SDP type in offer is not 'offer'."); // Might be too strict
     }
 
     try {
-      setStatus("Monitor: Initializing PeerConnection...");
-      setError('');
-      collectedIceCandidatesRef.current = [];
-      console.log(`${MON_LOG_PREFIX} Initializing RTCPeerConnection. Current pcRef:`, pcRef.current);
-      if(pcRef.current) {
-        console.warn(`${MON_LOG_PREFIX} Existing PeerConnection found. Closing it before creating a new one.`);
-        pcRef.current.close();
-      }
-
-      const pc = new RTCPeerConnection({
-          iceTransportPolicy: 'all' 
-      });
-      console.log(`${MON_LOG_PREFIX} New RTCPeerConnection created:`, pc);
+      if (pcRef.current) pcRef.current.close();
+      const pc = new RTCPeerConnection({}); 
       pcRef.current = pc;
 
       pc.onicecandidate = (event) => {
-        console.log(`${MON_LOG_PREFIX} onicecandidate event:`, event);
-        if (event.candidate) {
-          console.log(`${MON_LOG_PREFIX} Collected ICE candidate for Monitor answer:`, event.candidate.toJSON());
-          collectedIceCandidatesRef.current.push(event.candidate.toJSON());
-        } else {
-          console.log(`${MON_LOG_PREFIX} All ICE candidates collected (event.candidate is null).`);
-        }
+        if (event.candidate) collectedIceCandidatesRef.current.push(event.candidate.toJSON());
       };
 
       pc.onicegatheringstatechange = () => {
-        console.log(`${MON_LOG_PREFIX} onicegatheringstatechange - state:`, pc.iceGatheringState, "PeerConnection:", pc);
-        setStatus(`Monitor ICE Gathering: ${pc.iceGatheringState}`);
+        setStatus("Monitor ICE Gathering: " + pc.iceGatheringState);
         if (pc.iceGatheringState === 'complete') {
-          console.log(`${MON_LOG_PREFIX} ICE gathering complete.`);
           if (!pc.localDescription) {
-            console.error(`${MON_LOG_PREFIX} Local description is null at ICE complete.`);
             setError("Monitor: Error: Local description missing during answer creation.");
             return;
           }
-          const answerSignalPayload = {
-            type: 'monitor_answer',
+          const answerPayload = {
+            type: 'monitor_answer_to_controller',
             sdp: pc.localDescription.toJSON(),
             iceCandidates: collectedIceCandidatesRef.current
           };
-          console.log(`${MON_LOG_PREFIX} Answer for Controller fully prepared. Signal object:`, answerSignalPayload);
-          setAnswerSignal(JSON.stringify(answerSignalPayload, null, 2));
-          setStatus('Monitor: Answer created. Copy it to Controller.');
+          setMonitorAnswerJson(JSON.stringify(answerPayload, null, 2));
+          setStatus('Monitor: Answer created. Copy to Controller.');
         }
-      };
-
-      pc.oniceconnectionstatechange = () => {
-        console.log(`${MON_LOG_PREFIX} oniceconnectionstatechange - state:`, pc.iceConnectionState, "PeerConnection:", pc);
-        setStatus(`Monitor-Ctrl ICE: ${pc.iceConnectionState}`);
       };
 
       pc.onconnectionstatechange = () => {
-        console.log(`${MON_LOG_PREFIX} onconnectionstatechange - state:`, pc.connectionState, "PeerConnection:", pc);
-        setStatus(`Monitor-Ctrl Connection: ${pc.connectionState}`);
-        if (pc.connectionState === 'failed') {
-          setError("Monitor: Connection to Controller FAILED.");
-          console.error(
-            `${MON_LOG_PREFIX} Connection to Controller FAILED. Offer SDP:`, pc.remoteDescription?.sdp, 
-            "Answer SDP:", pc.localDescription?.sdp,
-            "Collected local ICE:", collectedIceCandidatesRef.current
-          );
-        } else if (pc.connectionState === "connected") {
-          setStatus("Monitor: Successfully connected to Controller!");
+        setStatus("Monitor Connection: " + pc.connectionState);
+        if (pc.connectionState === 'failed') setError("Monitor: Connection FAILED.");
+        else if (pc.connectionState === 'connected') {
+          setStatus("Monitor: Connected! Stream should be playing.");
           setError('');
         }
       };
-
-      pc.onsignalingstatechange = () => {
-        console.log(`${MON_LOG_PREFIX} onsignalingstatechange - state:`, pc.signalingState, "PeerConnection:", pc);
-      };
+      
+      pc.oniceconnectionstatechange = () => setStatus("Monitor ICE: " + pc.iceConnectionState);
+      pc.onsignalingstatechange = () => console.log(MON_LOG_PREFIX + "Signaling state: " + pc.signalingState);
 
       pc.ontrack = (event) => {
-        console.log(`${MON_LOG_PREFIX} ontrack event:`, event);
         if (event.streams && event.streams[0]) {
-          console.log(`${MON_LOG_PREFIX} Remote stream received:`, event.streams[0]);
-          setRemoteStream(event.streams[0]);
-          setStatus("Monitor: Remote stream received!");
+          remoteStreamRef.current = event.streams[0];
+          if (videoRef.current) videoRef.current.srcObject = event.streams[0];
         } else {
-          console.warn(`${MON_LOG_PREFIX} ontrack event received, but no stream or track data found in streams[0]. Using event.track.`, event.track);
-          const newStream = new MediaStream();
-          newStream.addTrack(event.track);
-          setRemoteStream(newStream);
+          const newStream = new MediaStream([event.track]);
+          remoteStreamRef.current = newStream;
+          if (videoRef.current) videoRef.current.srcObject = newStream;
         }
+        setStatus("Monitor: Stream received.");
       };
 
-      console.log(`${MON_LOG_PREFIX} Setting remote description (offer from Controller) with sdp:`, offerSignalPayload.sdp);
-      await pc.setRemoteDescription(new RTCSessionDescription(offerSignalPayload.sdp));
-      console.log(`${MON_LOG_PREFIX} Remote description (offer from Controller) set. Current remoteDescription:`, pc.remoteDescription);
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+
+      await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.sdp));
       
-      if (offerSignalPayload.iceCandidates && Array.isArray(offerSignalPayload.iceCandidates)) {
-        console.log(`${MON_LOG_PREFIX} Adding ${offerSignalPayload.iceCandidates.length} ICE candidates from Controller's offer.`);
-        for (const candidate of offerSignalPayload.iceCandidates) {
-          if (candidate) {
-             console.log(`${MON_LOG_PREFIX} Attempting to add ICE candidate:`, candidate);
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate));
-              console.log(`${MON_LOG_PREFIX} Successfully added ICE candidate from Controller's offer:`, candidate);
-            } catch (addIceError) {
-              console.error(`${MON_LOG_PREFIX} Error adding one ICE candidate from Controller's offer:`, candidate, addIceError);
-              setError(prev => `${prev} AddICE Fail (Offer): ${addIceError.message}. Candidate: ${JSON.stringify(candidate)}. `);
-            }
-          } else {
-            console.warn(`${MON_LOG_PREFIX} Received a null/undefined ICE candidate in Controller's offer. Skipping.`);
-          }
+      if (offerPayload.iceCandidates && Array.isArray(offerPayload.iceCandidates)) {
+        for (const candidate of offerPayload.iceCandidates) {
+          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("Error adding remote ICE: "+e));
         }
-         console.log(`${MON_LOG_PREFIX} Finished processing ICE candidates from Controller's offer.`);
-      } else {
-        console.log(`${MON_LOG_PREFIX} No ICE candidates in Controller's offer or not an array.`);
       }
 
-      console.log(`${MON_LOG_PREFIX} Creating answer...`);
-      const answer = await pc.createAnswer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true
-      });
-      console.log(`${MON_LOG_PREFIX} Answer created:`, answer);
+      const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      console.log(`${MON_LOG_PREFIX} Local description (answer) set. Current localDescription:`, pc.localDescription);
-      // Answer signal generation moved to onicegatheringstatechange === 'complete'
 
     } catch (err) {
-      console.error(`${MON_LOG_PREFIX} Error in processOfferAndCreateAnswer:`, err);
-      setError(`Monitor: Answer Error: ${err.toString()}`);
-      setStatus('Monitor: Failed to create answer.');
+      setError("Monitor: Offer/Answer Error: " + err.toString());
+      setStatus('Monitor: Failed to process Controller offer.');
     }
   };
 
-  const copyToClipboard = (text) => {
-    console.log(`${MON_LOG_PREFIX} copyToClipboard called for text:`, text.substring(0, 100) + "...");
+  const fallbackCopyToClipboard = (text, type, textareaRefForFallback) => {
+    if (textareaRefForFallback && textareaRefForFallback.current) {
+      textareaRefForFallback.current.select();
+      document.execCommand('copy');
+      setStatus("Copied " + type + " (fallback)! Please verify.");
+      setTimeout(() => setStatus(prev => prev === ("Copied " + type + " (fallback)! Please verify.") ? ("Monitor: " + type + " ready.") : prev), 2000);
+    } else {
+      setError("Textarea ref not available for fallback copy for " + type);
+    }
+  };
+
+  const copyToClipboard = (textToCopy, type, textareaForFallbackRef) => {
+    if (!textToCopy) {
+      setError("Monitor: No " + type + " text to copy.");
+      return;
+    }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text)
+      navigator.clipboard.writeText(textToCopy)
         .then(() => {
-          console.log(`${MON_LOG_PREFIX} Copied to clipboard successfully.`);
-          setStatus('Copied to clipboard!');
-           setTimeout(() => setStatus(prev => prev === 'Copied to clipboard!' ? 'Monitor: Answer created. Copy it to Controller.' : prev), 2000);
+          setStatus("Copied " + type + " to clipboard!");
+          setTimeout(() => setStatus(prev => prev === ("Copied " + type + " to clipboard!") ? ("Monitor: " + type + " ready.") : prev), 2000);
         })
         .catch(err => {
-          console.error(`${MON_LOG_PREFIX} Failed to copy text using navigator.clipboard:`, err);
-          setError('Failed to copy to clipboard. Please copy manually.');
+          setError("Failed to copy " + type + ". Please copy manually or grant clipboard permission.");
+          fallbackCopyToClipboard(textToCopy, type, textareaForFallbackRef);
         });
     } else {
-      console.warn(`${MON_LOG_PREFIX} navigator.clipboard not available. Using fallback copy method.`);
-      try {
-        answerSignalTextareaRef.current?.select();
-        document.execCommand('copy');
-        console.log(`${MON_LOG_PREFIX} Copied to clipboard using fallback.`);
-        setStatus('Copied to clipboard (fallback)! Please verify.');
-        setTimeout(() => setStatus(prev => prev === 'Copied to clipboard (fallback)! Please verify.' ? 'Monitor: Answer created. Copy it to Controller.' : prev), 2000);
-      } catch (fallbackErr) {
-        console.error(`${MON_LOG_PREFIX} Fallback copy method failed:`, fallbackErr);
-        setError('Failed to copy to clipboard even with fallback. Please copy manually.');
-      }
+      fallbackCopyToClipboard(textToCopy, type, textareaForFallbackRef);
     }
   };
 
   return (
-    <div>
-      <h2>Monitor Screen</h2>
-      <div>
-        <strong>Status:</strong> {status}
-      </div>
-      {error && <div style={{ color: 'red' }}><strong>Error:</strong> {error}</div>}
+    <div style={commonStyles.pageContainer}>
+      <header style={commonStyles.header}>
+        <h1 style={commonStyles.title}>Monitor Station</h1>
+        <p style={commonStyles.status}>Status: {status}</p>
+        {error && <p style={commonStyles.error}>Error: {error}</p>}
+      </header>
 
-      <div>
-        <h3>1. Paste Offer from Controller</h3>
-        <textarea 
-          placeholder="Paste Controller's Offer JSON here" 
-          value={offerSignalInput} 
-          onChange={e => setOfferSignalInput(e.target.value)} 
-          rows={15} 
-          cols={80}
-          style={{ fontFamily: 'monospace', fontSize: '10px' }}
-          disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
-        />
-        <br />
-        <button onClick={processOfferAndCreateAnswer} disabled={!offerSignalInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}>
-          Process Offer & Create Answer
-        </button>
-      </div>
+      <div style={commonStyles.mainContentArea}>
+        <section style={commonStyles.card}>
+          <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Incoming Connection Setup</h2>
+          <div>
+            <label htmlFor="controllerOffer" style={commonStyles.label}>Paste Offer from Controller:</label>
+            <textarea 
+                id="controllerOffer"
+                placeholder="Controller's Offer JSON goes here..." 
+                value={controllerOfferJsonInput} 
+                onChange={e => setControllerOfferJsonInput(e.target.value)} 
+                style={commonStyles.textarea}
+                disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
+            />
+          </div>
+          <button 
+            onClick={processOfferAndCreateAnswer} 
+            style={{...commonStyles.button, ...((!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')) && commonStyles.buttonDisabled)} }
+            disabled={!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}
+          >
+            Process Offer & Generate Answer
+          </button>
+          
+          {monitorAnswerJson && (
+            <div>
+              <label htmlFor="monitorAnswer" style={commonStyles.label}>Copy Answer to Controller:</label>
+              <textarea 
+                id="monitorAnswer"
+                ref={answerTextareaRef} 
+                value={monitorAnswerJson} 
+                readOnly 
+                style={commonStyles.textarea}
+              />
+              <button 
+                  onClick={() => copyToClipboard(monitorAnswerJson, 'Answer', answerTextareaRef)} 
+                  style={{...commonStyles.button, marginTop: '10px'}}
+              >
+                Copy Answer
+              </button>
+            </div>
+          )}
+        </section>
 
-      {answerSignal && (
-        <div>
-          <h3>2. Copy this Answer to Controller</h3>
-          <textarea 
-            ref={answerSignalTextareaRef} 
-            readOnly 
-            value={answerSignal} 
-            rows={15} 
-            cols={80} 
-            style={{ fontFamily: 'monospace', fontSize: '10px', verticalAlign: 'top' }}
-          />
-          <button onClick={() => copyToClipboard(answerSignal)} style={{ verticalAlign: 'top', marginLeft: '5px' }}>Copy Answer</button>
-        </div>
-      )}
-
-      <div>
-        <h3>Remote Video from Controller</h3>
-        {remoteStream ? (
-          <video ref={el => { if (el) el.srcObject = remoteStream; }} autoPlay playsInline style={{ width: '640px', height: '480px', border: '1px solid black' }} />
-        ) : (
-          <p>Waiting for remote stream...</p>
-        )}
+        <section style={commonStyles.card}>
+          <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Remote Video Feed</h2>
+          <video ref={videoRef} autoPlay playsInline style={commonStyles.video} />
+          {!remoteStreamRef.current && (
+            <div style={{...commonStyles.video, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#333', color: 'white', minHeight: '200px'}}>
+                <p>Waiting for video stream from Controller...</p>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

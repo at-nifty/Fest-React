@@ -1,543 +1,684 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useAppStore } from '../store';
 
 const CTRL_LOG_PREFIX = "[CtrlScreen]";
 
+// Keep existing commonStyles but add new styles for tabs and operation view
+const commonStyles = {
+  // ... (keep existing styles)
+  
+  // Add new styles
+  tabContainer: {
+    display: 'flex',
+    gap: '2px',
+    backgroundColor: '#e0e0e0',
+    padding: '2px',
+    borderRadius: '8px',
+    marginBottom: '20px'
+  },
+  tab: {
+    padding: '10px 20px',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    backgroundColor: '#f0f0f0',
+    color: '#666',
+    flex: 1,
+    textAlign: 'center',
+    transition: 'all 0.2s ease'
+  },
+  activeTab: {
+    backgroundColor: '#fff',
+    color: '#007bff',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  previewGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gap: '15px',
+    padding: '15px'
+  },
+  previewCard: {
+    backgroundColor: '#fff',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    cursor: 'pointer',
+    transition: 'transform 0.2s ease',
+    position: 'relative'
+  },
+  previewVideo: {
+    width: '100%',
+    aspectRatio: '16/9',
+    backgroundColor: '#000',
+    objectFit: 'cover'
+  },
+  previewLabel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: '8px',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    color: '#fff',
+    fontSize: '0.9em'
+  },
+  previewOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,128,255,0.3)',
+    display: 'none',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#fff',
+    fontWeight: 'bold'
+  },
+  monitorPanel: {
+    backgroundColor: '#fff',
+    borderRadius: '8px',
+    padding: '15px',
+    marginBottom: '15px'
+  },
+  monitorTitle: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '10px'
+  },
+  currentSource: {
+    fontSize: '0.9em',
+    color: '#666',
+    fontStyle: 'italic'
+  }
+};
+
 function ControllerScreen() {
-  console.log(`${CTRL_LOG_PREFIX} Component RENDERED`);
-  const [camOfferSignalInput, setCamOfferSignalInput] = useState('');
-  const [camAnswerSignal, setCamAnswerSignal] = useState('');
-  const [monitorOfferSignal, setMonitorOfferSignal] = useState('');
-  const [monitorAnswerSignalInput, setMonitorAnswerSignalInput] = useState('');
+  // Keep existing state and refs
+  const [activeTab, setActiveTab] = useState('connection'); // 'connection' or 'operation'
+  
+  // ... (keep other existing state declarations)
 
-  const [status, setStatus] = useState('Waiting for Camera Offer');
-  const [error, setError] = useState('');
+  // Tabs component
+  const renderTabs = () => (
+    <div style={commonStyles.tabContainer}>
+      <button 
+        style={{
+          ...commonStyles.tab,
+          ...(activeTab === 'connection' && commonStyles.activeTab)
+        }}
+        onClick={() => setActiveTab('connection')}
+      >
+        Connection Setup
+      </button>
+      <button 
+        style={{
+          ...commonStyles.tab,
+          ...(activeTab === 'operation' && commonStyles.activeTab)
+        }}
+        onClick={() => setActiveTab('operation')}
+        disabled={!monitors.some(m => m.status === 'connected_to_controller')}
+      >
+        Operation Mode
+      </button>
+    </div>
+  );
 
-  const pcCamRef = useRef(null); // PeerConnection for Camera
-  const pcMonitorRef = useRef(null); // PeerConnection for Monitor
-  const remoteCamStreamRef = useRef(null);
+  // Operation view - OBS-like interface
+  const renderOperationView = () => {
+    const connectedMonitors = monitors.filter(m => 
+      m.status === 'connected_to_controller' || m.status.startsWith('pc_state_connected')
+    );
 
-  const collectedCamIceCandidatesRef = useRef([]);
-  const collectedMonitorIceCandidatesRef = useRef([]);
+    return (
+      <>
+        {connectedMonitors.map(monitor => (
+          <div key={monitor.id} style={commonStyles.monitorPanel}>
+            <div style={commonStyles.monitorTitle}>
+              <h3>{monitor.name}</h3>
+              <span style={commonStyles.currentSource}>
+                Source: {monitorSourceMap[monitor.id] ? 
+                  getCameraById(monitorSourceMap[monitor.id])?.name || 'Unknown' : 
+                  'No Signal'}
+              </span>
+            </div>
+            <div style={commonStyles.previewGrid}>
+              {/* No Signal preview */}
+              <div 
+                style={commonStyles.previewCard}
+                onClick={() => switchMonitorCamera(monitor.id, null)}
+              >
+                <canvas 
+                  width="320" 
+                  height="180" 
+                  style={commonStyles.previewVideo}
+                  ref={el => {
+                    if (el) {
+                      const ctx = el.getContext('2d');
+                      if (ctx) {
+                        ctx.fillStyle = 'black';
+                        ctx.fillRect(0, 0, el.width, el.height);
+                        ctx.fillStyle = 'white';
+                        ctx.font = '16px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('No Signal', el.width/2, el.height/2);
+                      }
+                    }
+                  }}
+                />
+                <div style={commonStyles.previewLabel}>
+                  No Signal
+                </div>
+                {!monitorSourceMap[monitor.id] && (
+                  <div style={{...commonStyles.previewOverlay, display: 'flex'}}>
+                    ✓ ACTIVE
+                  </div>
+                )}
+              </div>
 
-  const camAnswerTextareaRef = useRef(null);
-  const monitorOfferTextareaRef = useRef(null);
+              {/* Camera previews */}
+              {cameras
+                .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
+                .map(camera => {
+                  const stream = cameraStreamRefs.current[camera.id];
+                  const isActive = monitorSourceMap[monitor.id] === camera.id;
 
-  useEffect(() => {
-    console.log(`${CTRL_LOG_PREFIX} useEffect for cleanup triggered.`);
-    return () => {
-      console.log(`${CTRL_LOG_PREFIX} Cleanup: Closing Cam PeerConnection.`);
-      if (pcCamRef.current) {
-        pcCamRef.current.close();
-        pcCamRef.current = null;
-      }
-      console.log(`${CTRL_LOG_PREFIX} Cleanup: Closing Monitor PeerConnection.`);
-      if (pcMonitorRef.current) {
-        pcMonitorRef.current.close();
-        pcMonitorRef.current = null;
-      }
-      if (remoteCamStreamRef.current) {
-        console.log(`${CTRL_LOG_PREFIX} Cleanup: Stopping remote camera stream tracks.`);
-        remoteCamStreamRef.current.getTracks().forEach(track => track.stop());
-        remoteCamStreamRef.current = null;
-      }
-    };
-  }, []);
-
-  // ---- Camera Facing Logic ----
-  const processCameraOfferAndCreateAnswer = async () => {
-    console.log(`${CTRL_LOG_PREFIX} processCameraOfferAndCreateAnswer called with input:`, camOfferSignalInput);
-    if (!camOfferSignalInput) {
-      console.error(`${CTRL_LOG_PREFIX} Camera offer input is empty.`);
-      setError("Controller: Camera offer input is empty.");
-      return;
-    }
-    let camOfferPayload;
-    try {
-      camOfferPayload = JSON.parse(camOfferSignalInput);
-      console.log(`${CTRL_LOG_PREFIX} Parsed Camera offer payload:`, camOfferPayload);
-    } catch (e) {
-      console.error(`${CTRL_LOG_PREFIX} Invalid JSON in Camera offer:`, e);
-      setError(`Controller: Invalid JSON in Camera offer: ${e.message}`);
-      return;
-    }
-
-    if (!camOfferPayload || typeof camOfferPayload.sdp !== 'object' || !camOfferPayload.sdp.type || !camOfferPayload.sdp.sdp) {
-      console.error(`${CTRL_LOG_PREFIX} Invalid Camera offer signal structure:`, camOfferPayload);
-      setError("Controller: Invalid Camera offer signal (missing sdp or sdp fields).");
-      return;
-    }
-     if (camOfferPayload.sdp.type !== 'offer') {
-        console.warn(`${CTRL_LOG_PREFIX} Cam SDP type is '${camOfferPayload.sdp.type}', expected 'offer'.`);
-    }
-
-    try {
-      setStatus("Controller: Initializing PC for Camera...");
-      setError('');
-      collectedCamIceCandidatesRef.current = [];
-      console.log(`${CTRL_LOG_PREFIX} Initializing RTCPeerConnection for Camera. Current pcCamRef:`, pcCamRef.current);
-      if(pcCamRef.current) {
-        console.warn(`${CTRL_LOG_PREFIX} Existing Cam PeerConnection found. Closing it before creating a new one.`);
-        pcCamRef.current.close();
-      }
-
-      const pcCam = new RTCPeerConnection({ iceTransportPolicy: 'all' });
-      console.log(`${CTRL_LOG_PREFIX} New RTCPeerConnection for Camera created:`, pcCam);
-      pcCamRef.current = pcCam;
-
-      pcCam.onicecandidate = (event) => {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: onicecandidate event:`, event);
-        if (event.candidate) {
-          console.log(`${CTRL_LOG_PREFIX} CamPC: Collected ICE candidate for Camera answer:`, event.candidate.toJSON());
-          collectedCamIceCandidatesRef.current.push(event.candidate.toJSON());
-        } else {
-          console.log(`${CTRL_LOG_PREFIX} CamPC: All ICE candidates collected (event.candidate is null).`);
-        }
-      };
-
-      pcCam.onicegatheringstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: onicegatheringstatechange - state:`, pcCam.iceGatheringState);
-        setStatus(`Ctrl-Cam ICE Gathering: ${pcCam.iceGatheringState}`);
-        if (pcCam.iceGatheringState === 'complete') {
-          console.log(`${CTRL_LOG_PREFIX} CamPC: ICE gathering complete.`);
-          if (!pcCam.localDescription) {
-            console.error(`${CTRL_LOG_PREFIX} CamPC: Local description is null at ICE complete.`);
-            setError("Controller: Error: CamPC Local description missing during answer creation.");
-            return;
-          }
-          const camAnswerPayload = {
-            type: 'controller_answer_to_cam',
-            sdp: pcCam.localDescription.toJSON(),
-            iceCandidates: collectedCamIceCandidatesRef.current
-          };
-          console.log(`${CTRL_LOG_PREFIX} CamPC: Camera Answer fully prepared. Signal object:`, camAnswerPayload);
-          setCamAnswerSignal(JSON.stringify(camAnswerPayload, null, 2));
-          setStatus('Controller: Answer for Camera created. Copy to Camera & await Monitor Answer.');
-        }
-      };
-
-      pcCam.oniceconnectionstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: oniceconnectionstatechange - state:`, pcCam.iceConnectionState);
-        setStatus(`Ctrl-Cam ICE: ${pcCam.iceConnectionState}`);
-      };
-
-      pcCam.onconnectionstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: onconnectionstatechange - state:`, pcCam.connectionState);
-        setStatus(`Ctrl-Cam Connection: ${pcCam.connectionState}`);
-        if (pcCam.connectionState === 'failed') {
-          setError("Controller: Connection with Camera FAILED.");
-           console.error(`${CTRL_LOG_PREFIX} CamPC: Connection FAILED. Cam Offer SDP:`, pcCam.remoteDescription?.sdp, "Ctrl Answer SDP:", pcCam.localDescription?.sdp);
-        } else if (pcCam.connectionState === 'connected') {
-          setStatus("Controller: Connected with Camera!");
-          setError('');
-          // If Monitor is already connected, we might need to re-negotiate or handle tracks.
-          // For now, assume Monitor connects after Camera stream is established.
-        }
-      };
-
-       pcCam.onsignalingstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: onsignalingstatechange - state:`, pcCam.signalingState);
-      };
-
-      pcCam.ontrack = (event) => {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: ontrack event:`, event);
-        if (event.streams && event.streams[0]) {
-          console.log(`${CTRL_LOG_PREFIX} CamPC: Remote stream from Camera received:`, event.streams[0]);
-          remoteCamStreamRef.current = event.streams[0];
-          setStatus("Controller: Camera stream received.");
-
-          // If Monitor PC is ready, add track to it.
-          if (pcMonitorRef.current && pcMonitorRef.current.signalingState === 'stable' || pcMonitorRef.current.signalingState === 'have-remote-offer' || pcMonitorRef.current.signalingState === 'have-local-pranswer') { // any state where adding track is safe
-            console.log(`${CTRL_LOG_PREFIX} CamPC: Monitor PC exists, adding Camera stream tracks to Monitor PC.`);
-            remoteCamStreamRef.current.getTracks().forEach(track => {
-              try {
-                 const sender = pcMonitorRef.current.addTrack(track, remoteCamStreamRef.current);
-                 console.log(`${CTRL_LOG_PREFIX} Added ${track.kind} track from Cam to MonitorPC. Sender:`, sender);
-              } catch (addTrackError) {
-                 console.error(`${CTRL_LOG_PREFIX} Error adding track from Cam to MonitorPC:`, addTrackError);
-                 setError(prev => `${prev} Err addTrack Cam->Mon: ${addTrackError.message}. `);
+                  return (
+                    <div 
+                      key={camera.id}
+                      style={commonStyles.previewCard}
+                      onClick={() => switchMonitorCamera(monitor.id, camera.id)}
+                    >
+                      <video
+                        ref={el => {
+                          if (el && el.srcObject !== stream) {
+                            el.srcObject = stream;
+                          }
+                        }}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={commonStyles.previewVideo}
+                      />
+                      <div style={commonStyles.previewLabel}>
+                        {camera.name}
+                      </div>
+                      {isActive && (
+                        <div style={{...commonStyles.previewOverlay, display: 'flex'}}>
+                          ✓ ACTIVE
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               }
-            });
-          } else {
-            console.log(`${CTRL_LOG_PREFIX} CamPC: Monitor PC not ready or in unsuitable state (${pcMonitorRef.current?.signalingState}) to add tracks yet.`);
-          }
-        } else {
-            console.warn(`${CTRL_LOG_PREFIX} CamPC: ontrack event but no stream[0]. Track:`, event.track);
-            // Attempt to construct stream manually if only track is available
-            const newStream = new MediaStream();
-            newStream.addTrack(event.track);
-            remoteCamStreamRef.current = newStream;
-            setStatus("Controller: Camera track received (manual stream construction).");
-             // Repeat logic for adding to monitor PC if needed
-        }
-      };
-
-      console.log(`${CTRL_LOG_PREFIX} CamPC: Setting remote description (Camera Offer) with sdp:`, camOfferPayload.sdp);
-      await pcCam.setRemoteDescription(new RTCSessionDescription(camOfferPayload.sdp));
-      console.log(`${CTRL_LOG_PREFIX} CamPC: Remote description (Camera Offer) set. Current remoteDescription:`, pcCam.remoteDescription);
-
-      if (camOfferPayload.iceCandidates && Array.isArray(camOfferPayload.iceCandidates)) {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: Adding ${camOfferPayload.iceCandidates.length} ICE candidates from Camera.`);
-        for (const candidate of camOfferPayload.iceCandidates) {
-          if (candidate) {
-            console.log(`${CTRL_LOG_PREFIX} CamPC: Attempting to add ICE candidate from Camera:`, candidate);
-            try {
-              await pcCam.addIceCandidate(new RTCIceCandidate(candidate));
-              console.log(`${CTRL_LOG_PREFIX} CamPC: Successfully added ICE candidate from Camera:`, candidate);
-            } catch (addIceError) {
-              console.error(`${CTRL_LOG_PREFIX} CamPC: Error adding one ICE candidate from Camera:`, candidate, addIceError);
-              setError(prev => `${prev} AddICE Fail (CamOffer): ${addIceError.message}. `);
-            }
-          } else {
-            console.warn(`${CTRL_LOG_PREFIX} CamPC: Received a null/undefined ICE candidate from Camera. Skipping.`);
-          }
-        }
-        console.log(`${CTRL_LOG_PREFIX} CamPC: Finished processing ICE candidates from Camera.`);
-      } else {
-        console.log(`${CTRL_LOG_PREFIX} CamPC: No ICE candidates in Camera offer or not an array.`);
-      }
-
-      console.log(`${CTRL_LOG_PREFIX} CamPC: Creating answer for Camera...`);
-      const camAnswer = await pcCam.createAnswer(); // Controller receives, so no special offerToReceive options needed here
-      console.log(`${CTRL_LOG_PREFIX} CamPC: Answer for Camera created:`, camAnswer);
-      await pcCam.setLocalDescription(camAnswer);
-      console.log(`${CTRL_LOG_PREFIX} CamPC: Local description (Answer to Camera) set. Current localDescription:`, pcCam.localDescription);
-      // Camera answer signal generation is now handled by onicegatheringstatechange complete
-
-    } catch (err) {
-      console.error(`${CTRL_LOG_PREFIX} Error in processCameraOfferAndCreateAnswer:`, err);
-      setError(`Controller: Cam Offer/Answer Error: ${err.toString()}`);
-      setStatus('Controller: Failed to process Camera offer.');
-    }
+            </div>
+          </div>
+        ))}
+      </>
+    );
   };
 
-  // ---- Monitor Facing Logic ----
-  const createOfferForMonitor = async () => {
-    console.log(`${CTRL_LOG_PREFIX} createOfferForMonitor called.`);
-    if (!remoteCamStreamRef.current) {
-      console.error(`${CTRL_LOG_PREFIX} MonitorPC: Camera stream not yet available.`);
-      setError("Controller: Camera stream not available. Process Camera offer first.");
+  // Keep existing utility functions and handlers...
+
+  return (
+    <div style={commonStyles.pageContainer}>
+      <header style={commonStyles.header}>
+        <h1 style={commonStyles.title}>Controller Dashboard</h1>
+        <p style={commonStyles.status}>Controller Status: {status}</p>
+        {error && <p style={commonStyles.error}>Error: {error}</p>}
+      </header>
+
+      <div style={commonStyles.mainContentArea}>
+        {renderTabs()}
+
+        {activeTab === 'operation' ? (
+          renderOperationView()
+        ) : (
+          <>
+            {/* Existing connection view */}
+    let parsedRawOffer;
+    try {
+      parsedRawOffer = JSON.parse(newCamOfferInput);
+    } catch (e) {
+      setError("Invalid JSON in Camera Offer: " + e.message);
+      setStatus("Failed to parse camera offer.");
       return;
     }
-    if (pcMonitorRef.current && pcMonitorRef.current.signalingState !== 'stable' && pcMonitorRef.current.signalingState !== 'closed') {
-        console.warn(`${CTRL_LOG_PREFIX} MonitorPC: PeerConnection already exists and is not in stable/closed state (${pcMonitorRef.current.signalingState}). Re-creating.`);
-        pcMonitorRef.current.close();
-        pcMonitorRef.current = null; // Allow re-initialization
+
+    if (!parsedRawOffer || !parsedRawOffer.sdp || parsedRawOffer.sdp.type !== 'offer') {
+      setError("Invalid offer structure in Camera Offer JSON.");
+      setStatus("Invalid camera offer structure.");
+      return;
     }
 
+    const newCamId = addCamera(newCamOfferInput, parsedRawOffer.iceCandidates || [], parsedRawOffer);
+    updateCameraStatus(newCamId, 'processing_offer');
+    setExpandedCameraJson(newCamId);
+
     try {
-      setStatus("Controller: Initializing PC for Monitor...");
-      setError('');
-      collectedMonitorIceCandidatesRef.current = [];
-      console.log(`${CTRL_LOG_PREFIX} Initializing RTCPeerConnection for Monitor. Current pcMonitorRef:`, pcMonitorRef.current);
-       if(pcMonitorRef.current) { // Should be null due to above check, but defensive
-        console.warn(`${CTRL_LOG_PREFIX} MonitorPC: Existing PeerConnection found unexpectedly. Closing.`);
-        pcMonitorRef.current.close();
-      }
-
-      const pcMonitor = new RTCPeerConnection({ iceTransportPolicy: 'all' });
-      console.log(`${CTRL_LOG_PREFIX} New RTCPeerConnection for Monitor created:`, pcMonitor);
-      pcMonitorRef.current = pcMonitor;
-
-      pcMonitor.onicecandidate = (event) => {
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: onicecandidate event:`, event);
-        if (event.candidate) {
-          console.log(`${CTRL_LOG_PREFIX} MonitorPC: Collected ICE candidate for Monitor offer:`, event.candidate.toJSON());
-          collectedMonitorIceCandidatesRef.current.push(event.candidate.toJSON());
-        } else {
-          console.log(`${CTRL_LOG_PREFIX} MonitorPC: All ICE candidates collected (event.candidate is null).`);
-        }
+      const pc = new RTCPeerConnection({});
+      cameraPcRefs.current[newCamId] = pc;
+      const collectedIceCandidates = [];
+      
+      pc.onicecandidate = event => {
+        if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
       };
 
-      pcMonitor.onicegatheringstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: onicegatheringstatechange - state:`, pcMonitor.iceGatheringState);
-        setStatus(`Ctrl-Mon ICE Gathering: ${pcMonitor.iceGatheringState}`);
-        if (pcMonitor.iceGatheringState === 'complete') {
-          console.log(`${CTRL_LOG_PREFIX} MonitorPC: ICE gathering complete.`);
-          if (!pcMonitor.localDescription) {
-            console.error(`${CTRL_LOG_PREFIX} MonitorPC: Local description is null at ICE complete.`);
-            setError("Controller: Error: MonitorPC Local description missing during offer creation.");
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') {
+          if (!pc.localDescription) {
+            setError("Failed to generate answer for Camera " + newCamId + ": No local description.");
+            updateCameraStatus(newCamId, 'error_answering');
             return;
           }
-          const monitorOfferPayload = {
-            type: 'controller_offer_to_monitor',
-            sdp: pcMonitor.localDescription.toJSON(),
-            iceCandidates: collectedMonitorIceCandidatesRef.current
+          const answer = {
+            type: 'controller_answer_to_cam',
+            sdp: pc.localDescription.toJSON(),
+            iceCandidates: collectedIceCandidates,
           };
-          console.log(`${CTRL_LOG_PREFIX} MonitorPC: Monitor Offer fully prepared. Signal object:`, monitorOfferPayload);
-          setMonitorOfferSignal(JSON.stringify(monitorOfferPayload, null, 2));
-          setStatus('Controller: Offer for Monitor created. Copy to Monitor.');
+          setCameraAnswer(newCamId, JSON.stringify(answer, null, 2), collectedIceCandidates);
+          updateCameraStatus(newCamId, 'answer_ready');
+          setStatus("Answer generated for camera " + (getCameraById(newCamId)?.name || newCamId));
         }
       };
 
-      pcMonitor.oniceconnectionstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: oniceconnectionstatechange - state:`, pcMonitor.iceConnectionState);
-        setStatus(`Ctrl-Mon ICE: ${pcMonitor.iceConnectionState}`);
-      };
-
-      pcMonitor.onconnectionstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: onconnectionstatechange - state:`, pcMonitor.connectionState);
-        setStatus(`Ctrl-Mon Connection: ${pcMonitor.connectionState}`);
-        if (pcMonitor.connectionState === 'failed') {
-          setError("Controller: Connection with Monitor FAILED.");
-          console.error(`${CTRL_LOG_PREFIX} MonitorPC: Connection FAILED. Ctrl Offer SDP:`, pcMonitor.localDescription?.sdp, "Monitor Answer SDP:", pcMonitor.remoteDescription?.sdp);
-        } else if (pcMonitor.connectionState === 'connected') {
-          setStatus("Controller: Connected with Monitor! Streaming should start.");
-          setError('');
+      pc.ontrack = event => {
+        const stream = event.streams && event.streams[0] ? event.streams[0] : 
+                      (event.track ? new MediaStream([event.track]) : null);
+        if (stream) {
+          cameraStreamRefs.current[newCamId] = stream;
+          updateCameraStatus(newCamId, 'connected_streaming');
+          setStatus("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connected and streaming.");
         }
       };
 
-      pcMonitor.onsignalingstatechange = () => {
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: onsignalingstatechange - state:`, pcMonitor.signalingState);
+      pc.onconnectionstatechange = () => {
+        const camState = pc.connectionState;
+        updateCameraStatus(newCamId, "pc_state_" + camState);
+        if (camState === 'failed') {
+          setError("Camera "+ (getCameraById(newCamId)?.name || newCamId) + " connection failed.");
+        }
       };
 
-      // Add tracks from Camera to this PC (pcMonitor)
-      console.log(`${CTRL_LOG_PREFIX} MonitorPC: Adding tracks from Camera stream to Monitor PC.`);
-      if (remoteCamStreamRef.current) {
-        remoteCamStreamRef.current.getTracks().forEach(track => {
-           try {
-            const sender = pcMonitor.addTrack(track, remoteCamStreamRef.current);
-            console.log(`${CTRL_LOG_PREFIX} MonitorPC: Added ${track.kind} track to Monitor PC. Sender:`, sender);
-           } catch (addTrackError) {
-             console.error(`${CTRL_LOG_PREFIX} MonitorPC: Error adding track to MonitorPC:`, addTrackError);
-             setError(prev => `${prev} Err addTrack to MonPC: ${addTrackError.message}. `);
-           }
-        });
-      } else {
-        console.warn(
-          `${CTRL_LOG_PREFIX} MonitorPC: remoteCamStreamRef.current is null when trying to add tracks for Monitor offer. This may lead to no video on Monitor.`
-        );
+      await pc.setRemoteDescription(new RTCSessionDescription(parsedRawOffer.sdp));
+      for (const candidate of (parsedRawOffer.iceCandidates || [])) {
+        if (candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(e => console.warn("Ctrl: Error adding cam ICE: "+e));
+        }
       }
-
-      console.log(`${CTRL_LOG_PREFIX} MonitorPC: Creating offer for Monitor...`);
-      const monitorOffer = await pcMonitor.createOffer({
-        offerToReceiveAudio: false, // Controller is sending, not receiving from Monitor
-        offerToReceiveVideo: false,
-      });
-      console.log(`${CTRL_LOG_PREFIX} MonitorPC: Offer for Monitor created:`, monitorOffer);
-      await pcMonitor.setLocalDescription(monitorOffer);
-      console.log(`${CTRL_LOG_PREFIX} MonitorPC: Local description (Offer to Monitor) set. Current localDescription:`, pcMonitor.localDescription);
-      // Monitor offer signal generation is now handled by onicegatheringstatechange complete
-
+      const localAnswer = await pc.createAnswer();
+      await pc.setLocalDescription(localAnswer);
     } catch (err) {
-      console.error(`${CTRL_LOG_PREFIX} Error in createOfferForMonitor:`, err);
-      setError(`Controller: Monitor Offer Error: ${err.toString()}`);
-      setStatus('Controller: Failed to create Monitor offer.');
+      setError("Error processing camera " + (getCameraById(newCamId)?.name || newCamId) + " offer: " + err.toString());
+      updateCameraStatus(newCamId, 'error_offer_processing');
     }
+    setNewCamOfferInput('');
   };
 
-  const processMonitorAnswer = async () => {
-    console.log(`${CTRL_LOG_PREFIX} processMonitorAnswer called with input:`, monitorAnswerSignalInput);
-    const pcMon = pcMonitorRef.current;
-    if (!pcMon) {
-      console.error(`${CTRL_LOG_PREFIX} MonitorPC not initialized.`);
-      setError("Controller: Monitor PeerConnection not ready. Create offer for Monitor first.");
-      return;
-    }
-     console.log(`${CTRL_LOG_PREFIX} MonitorPC: Current signalingState before processing answer:`, pcMon.signalingState);
-    if (pcMon.signalingState !== 'have-local-offer' && pcMon.signalingState !== 'stable') {
-        console.warn(`${CTRL_LOG_PREFIX} MonitorPC: Signaling state is ${pcMon.signalingState}, usually expect have-local-offer. Proceeding cautiously.`);
-    }
-
-    if (!monitorAnswerSignalInput) {
-      console.error(`${CTRL_LOG_PREFIX} Monitor answer input is empty.`);
-      setError("Controller: Monitor answer input is empty.");
+  const handlePrepareOfferForMonitor = useCallback(async (monitorId) => {
+    const monitor = getMonitorById(monitorId);
+    if (!monitor) {
+      setError("Monitor not found: " + monitorId);
+      updateMonitorStatus(monitorId, 'error_not_found');
       return;
     }
 
-    let monAnswerPayload;
+    console.log(CTRL_LOG_PREFIX + "Preparing offer for monitor " + monitorId);
+    setStatus("Preparing offer for " + monitor.name);
+    setError('');
+    setCurrentMonitorIdForOffer(monitorId);
+    setExpandedMonitorJson(monitorId);
+    updateMonitorStatus(monitorId, 'controller_preparing_offer');
+
     try {
-      monAnswerPayload = JSON.parse(monitorAnswerSignalInput);
-      console.log(`${CTRL_LOG_PREFIX} Parsed Monitor answer payload:`, monAnswerPayload);
-    } catch (e) {
-      console.error(`${CTRL_LOG_PREFIX} Invalid JSON in Monitor answer:`, e);
-      setError(`Controller: Invalid JSON in Monitor answer: ${e.message}`);
-      return;
-    }
+      if (monitorPcRefs.current[monitorId]) monitorPcRefs.current[monitorId].close();
+      const pc = new RTCPeerConnection({});
+      monitorPcRefs.current[monitorId] = pc;
+      const collectedIceCandidates = [];
 
-    if (!monAnswerPayload || typeof monAnswerPayload.sdp !== 'object' || !monAnswerPayload.sdp.type || !monAnswerPayload.sdp.sdp) {
-      console.error(`${CTRL_LOG_PREFIX} Invalid Monitor answer signal structure:`, monAnswerPayload);
-      setError("Controller: Invalid Monitor answer signal (missing sdp or sdp fields).");
-      return;
-    }
-    if (monAnswerPayload.sdp.type !== 'answer') {
-        console.warn(`${CTRL_LOG_PREFIX} MonitorPC: Expected SDP type 'answer' but got '${monAnswerPayload.sdp.type}'.`);
-    }
+      // Start with empty stream - camera can be selected later
+      const emptyStream = createEmptyMediaStream();
+      emptyStream.getTracks().forEach(track => pc.addTrack(track, emptyStream));
 
-    setStatus("Controller: Processing Monitor Answer...");
-    try {
-      console.log(`${CTRL_LOG_PREFIX} MonitorPC: Setting remote description (Monitor Answer) with sdp:`, monAnswerPayload.sdp);
-      await pcMon.setRemoteDescription(new RTCSessionDescription(monAnswerPayload.sdp));
-      console.log(`${CTRL_LOG_PREFIX} MonitorPC: Remote description (Monitor Answer) set. Current remoteDescription:`, pcMon.remoteDescription);
-      setStatus("Controller: Monitor answer SDP set. Adding ICE candidates...");
+      pc.onicecandidate = event => {
+        if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
+      };
 
-      if (monAnswerPayload.iceCandidates && Array.isArray(monAnswerPayload.iceCandidates)) {
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: Adding ${monAnswerPayload.iceCandidates.length} ICE candidates from Monitor.`);
-        for (const candidate of monAnswerPayload.iceCandidates) {
-          if (candidate) {
-            console.log(`${CTRL_LOG_PREFIX} MonitorPC: Attempting to add ICE candidate from Monitor:`, candidate);
-            try {
-              await pcMon.addIceCandidate(new RTCIceCandidate(candidate));
-              console.log(`${CTRL_LOG_PREFIX} MonitorPC: Successfully added ICE candidate from Monitor:`, candidate);
-            } catch (addIceError) {
-              console.error(`${CTRL_LOG_PREFIX} MonitorPC: Error adding one ICE candidate from Monitor:`, candidate, addIceError);
-              setError(prev => `${prev} AddICE Fail (MonAnswer): ${addIceError.message}. `);
-            }
-          } else {
-            console.warn(`${CTRL_LOG_PREFIX} MonitorPC: Received a null/undefined ICE candidate from Monitor. Skipping.`);
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') {
+          if (!pc.localDescription) {
+            setError("Failed to generate offer for Monitor "+monitor.name+": No local desc.");
+            updateMonitorStatus(monitorId, 'error_generating_offer');
+            return;
           }
+          const offerSdp = pc.localDescription.toJSON();
+          const offerForMonitorJson = JSON.stringify({
+            type: 'controller_offer_to_monitor',
+            sdp: offerSdp,
+            iceCandidates: collectedIceCandidates,
+          }, null, 2);
+          setOfferForMonitor(monitorId, offerForMonitorJson, collectedIceCandidates, offerSdp);
+          updateMonitorStatus(monitorId, 'offer_ready_for_monitor');
+          setStatus("Offer for " + monitor.name + " ready.");
         }
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: Finished processing ICE candidates from Monitor.`);
-         setStatus("Controller: Monitor Answer processed. Connecting...");
-      } else {
-        console.log(`${CTRL_LOG_PREFIX} MonitorPC: No ICE candidates in Monitor answer or not an array.`);
-        setStatus("Controller: Monitor Answer SDP set (no ICE from Mon). Connecting...");
-      }
+      };
+
+      pc.onconnectionstatechange = () => {
+        const monState = pc.connectionState;
+        updateMonitorStatus(monitorId, "pc_state_"+monState);
+        if (monState === 'failed') {
+          setError("Monitor "+monitor.name+" connection failed.");
+        } else if (monState === 'connected') {
+          setStatus("Monitor " + monitor.name + " connected. Use camera selector to choose source.");
+        }
+      };
+
+      const localOffer = await pc.createOffer();
+      await pc.setLocalDescription(localOffer);
+
     } catch (err) {
-      console.error(`${CTRL_LOG_PREFIX} Error in processMonitorAnswer:`, err);
-      setError(`Controller: Monitor Answer Error: ${err.toString()}`);
-      setStatus('Controller: Failed to process Monitor answer.');
+      setError("Error preparing offer for " + monitor.name + ": " + err.toString());
+      updateMonitorStatus(monitorId, 'error_offer_preparation');
     }
-  };
+  }, [getMonitorById, setOfferForMonitor, updateMonitorStatus]);
 
-  const copyToClipboard = (textareaRef, type) => {
-    const textToCopy = textareaRef.current?.value;
-    if (!textToCopy) {
-        console.warn(`${CTRL_LOG_PREFIX} copyToClipboard: No text to copy for ${type}.`);
-        setError(`Controller: No ${type} text to copy.`);
+  const handleAcceptAnswerFromMonitor = useCallback(async (monitorId) => {
+    const monitor = getMonitorById(monitorId);
+    if (!monitor || !answerFromMonitorInput) {
+      setError("Monitor not found or answer input missing for " + monitorId);
+      return;
+    }
+
+    const pc = monitorPcRefs.current[monitorId];
+    if (!pc) {
+      setError("No active PeerConnection for monitor " + monitor.name);
+      return;
+    }
+
+    setStatus("Processing answer from " + monitor.name + "...");
+    setError('');
+    updateMonitorStatus(monitorId, 'controller_processing_answer');
+
+    try {
+      const answerPayload = JSON.parse(answerFromMonitorInput);
+      if (!answerPayload || !answerPayload.sdp || answerPayload.sdp.type !== 'answer') {
+        setError("Invalid answer structure from " + monitor.name);
+        updateMonitorStatus(monitorId, 'error_invalid_answer');
         return;
-    }
-    console.log(`${CTRL_LOG_PREFIX} copyToClipboard called for ${type}, text:`, textToCopy.substring(0, 100) + "...");
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(textToCopy)
-        .then(() => {
-          console.log(`${CTRL_LOG_PREFIX} Copied ${type} to clipboard successfully.`);
-          setStatus(`Copied ${type} to clipboard!`);
-          setTimeout(() => setStatus(prev => prev === `Copied ${type} to clipboard!` ? `Controller: ${type} ready.` : prev), 2000);
-        })
-        .catch(err => {
-          console.error(`${CTRL_LOG_PREFIX} Failed to copy ${type} using navigator.clipboard:`, err);
-          setError(`Failed to copy ${type}. Please copy manually.`);
-        });
-    } else {
-      console.warn(`${CTRL_LOG_PREFIX} navigator.clipboard not available. Using fallback for ${type}.`);
-      try {
-        textareaRef.current.select();
-        document.execCommand('copy');
-        console.log(`${CTRL_LOG_PREFIX} Copied ${type} to clipboard using fallback.`);
-        setStatus(`Copied ${type} (fallback)! Please verify.`);
-         setTimeout(() => setStatus(prev => prev === `Copied ${type} (fallback)! Please verify.` ? `Controller: ${type} ready.` : prev), 2000);
-      } catch (fallbackErr) {
-        console.error(`${CTRL_LOG_PREFIX} Fallback copy for ${type} failed:`, fallbackErr);
-        setError(`Failed to copy ${type} with fallback. Please copy manually.`);
       }
+
+      await pc.setRemoteDescription(new RTCSessionDescription(answerPayload.sdp));
+      for (const candidate of (answerPayload.iceCandidates || [])) {
+        if (candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(e => console.warn("Ctrl: Error adding mon ICE: "+e));
+        }
+      }
+
+      setMonitorAnswer(monitorId, answerFromMonitorInput, answerPayload.iceCandidates || [], answerPayload.sdp);
+      updateMonitorStatus(monitorId, 'connected_to_controller');
+      setStatus("Monitor " + monitor.name + " connected.");
+      
+    } catch (err) {
+      setError("Error processing answer for " + monitor.name + ": " + err.toString());
+      updateMonitorStatus(monitorId, 'error_processing_answer');
     }
+
+    setAnswerFromMonitorInput('');
+    setCurrentMonitorIdForAnswer(null);
+  }, [answerFromMonitorInput, getMonitorById, setMonitorAnswer, updateMonitorStatus]);
+
+  const handleAddNewMonitor = useCallback(() => {
+    const newMonitorId = addMonitorPlaceholder();
+    setStatus("New monitor placeholder added: " + (getMonitorById(newMonitorId)?.name || newMonitorId));
+  }, [addMonitorPlaceholder, getMonitorById]);
+
+  const selectedCameraStream = selectedCameraId ? cameraStreamRefs.current[selectedCameraId] : null;
+
+  const copyToClipboard = (text, type) => {
+    if (!text) {
+      setError("No " + type + " text to copy.");
+      return;
+    }
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setStatus(type + " copied to clipboard.");
+        setTimeout(() => setStatus('Controller Idle'), 2000);
+      })
+      .catch(err => {
+        setError("Failed to copy " + type + ": " + err.message);
+      });
   };
 
-  // JSX Structure
-  return (
-    <div>
-      <h2>Controller Screen</h2>
-      <div>
-        <strong>Status:</strong> {status}
+  const renderCameraItem = (cam) => (
+    <div key={cam.id} style={{
+      ...commonStyles.deviceListItem,
+      ...(selectedCameraId === cam.id && commonStyles.selectedDevice)
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 'bold' }}>{cam.name}</span>
+        <span style={{...commonStyles.statusBadge, backgroundColor: getStatusColor(cam.status) }}>{cam.status}</span>
       </div>
-      {error && <div style={{ color: 'red' }}><strong>Error:</strong> {error}</div>}
-
-      <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-        {/* Camera Facing Section */}
-        <div style={{ border: '1px solid green', padding: '10px', margin: '5px' }}>
-          <h3>Camera Connection</h3>
-          <h4>1. Paste Camera's Offer JSON</h4>
-          <textarea 
-            placeholder="Paste Camera's Offer JSON here" 
-            value={camOfferSignalInput} 
-            onChange={e => setCamOfferSignalInput(e.target.value)} 
-            rows={10} 
-            cols={50}
-            style={{ fontFamily: 'monospace', fontSize: '10px' }}
-            disabled={pcCamRef.current && pcCamRef.current.signalingState !== 'stable' && pcCamRef.current.signalingState !== 'closed'}
+      <div style={commonStyles.smallId}>ID: {cam.id}</div>
+      <div style={commonStyles.buttonGroup}>
+        <button 
+          onClick={() => selectCamera(cam.id)} 
+          disabled={selectedCameraId === cam.id}
+          style={{...commonStyles.button, ...( selectedCameraId === cam.id && commonStyles.buttonDisabled )}}
+        >
+          {selectedCameraId === cam.id ? 'Current Source' :
+           (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'Select as Source' :
+            (cam.status === 'track_received_no_stream' ? 'Stream Issue' : 'Not Streaming')
+           )}
+        </button>
+        <button
+          onClick={() => setExpandedCameraJson(expandedCameraJson === cam.id ? null : cam.id)}
+          style={commonStyles.button}
+        >
+          {expandedCameraJson === cam.id ? 'Hide' : 'Show'} Answer
+        </button>
+      </div>
+      {expandedCameraJson === cam.id && cam.answerJson && (
+        <div style={{ marginTop: '10px'}}>
+          <label htmlFor={`camAnswer-${cam.id}`} style={commonStyles.label}>Answer for {cam.name}:</label>
+          <textarea
+            id={`camAnswer-${cam.id}`}
+            readOnly
+            value={cam.answerJson}
+            style={commonStyles.textarea}
           />
-          <br />
-          <button 
-            onClick={processCameraOfferAndCreateAnswer} 
-            disabled={!camOfferSignalInput || (pcCamRef.current && pcCamRef.current.signalingState !== 'stable' && pcCamRef.current.signalingState !== 'closed')}
+          <button
+            onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
+            style={{...commonStyles.button, marginTop: '5px'}}
           >
-            Process Cam Offer & Create Answer for Cam
-          </button>
-          
-          {camAnswerSignal && (
-            <div>
-              <h4>2. Copy this Answer to Camera</h4>
-              <textarea 
-                ref={camAnswerTextareaRef}
-                readOnly 
-                value={camAnswerSignal} 
-                rows={10} 
-                cols={50} 
-                style={{ fontFamily: 'monospace', fontSize: '10px', verticalAlign: 'top' }}
-              />
-              <button onClick={() => copyToClipboard(camAnswerTextareaRef, "Camera Answer")} style={{ verticalAlign: 'top', marginLeft: '5px' }}>Copy Cam Answer</button>
-            </div>
-          )}
-        </div>
-
-        {/* Monitor Facing Section */}
-        <div style={{ border: '1px solid blue', padding: '10px', margin: '5px' }}>
-          <h3>Monitor Connection</h3>
-          <h4>3. Create Offer for Monitor (after Cam connected)</h4>
-          <button 
-            onClick={createOfferForMonitor} 
-            disabled={!remoteCamStreamRef.current || (pcMonitorRef.current && pcMonitorRef.current.signalingState !== 'stable' && pcMonitorRef.current.signalingState !== 'closed')}
-          >
-            Create Offer for Monitor
-          </button>
-          {monitorOfferSignal && (
-            <div>
-              <h4>4. Copy this Offer to Monitor</h4>
-              <textarea 
-                ref={monitorOfferTextareaRef}
-                readOnly 
-                value={monitorOfferSignal} 
-                rows={10} 
-                cols={50} 
-                style={{ fontFamily: 'monospace', fontSize: '10px', verticalAlign: 'top' }}
-              />
-              <button onClick={() => copyToClipboard(monitorOfferTextareaRef, "Monitor Offer")} style={{ verticalAlign: 'top', marginLeft: '5px' }}>Copy Mon Offer</button>
-            </div>
-          )}
-
-          <h4>5. Paste Monitor's Answer JSON</h4>
-          <textarea 
-            placeholder="Paste Monitor's Answer JSON here" 
-            value={monitorAnswerSignalInput} 
-            onChange={e => setMonitorAnswerSignalInput(e.target.value)} 
-            rows={10} 
-            cols={50}
-            style={{ fontFamily: 'monospace', fontSize: '10px' }}
-            disabled={!pcMonitorRef.current || (pcMonitorRef.current.signalingState !== 'have-local-offer' && pcMonitorRef.current.signalingState !== 'stable')}
-          />
-          <br />
-          <button 
-            onClick={processMonitorAnswer} 
-            disabled={!monitorAnswerSignalInput || !pcMonitorRef.current || (pcMonitorRef.current.signalingState !== 'have-local-offer' && pcMonitorRef.current.signalingState !== 'stable')}
-          >
-            Process Monitor Answer
+            Copy Answer
           </button>
         </div>
-      </div>
-      {remoteCamStreamRef.current && (
-          <div>
-            <h4>Preview of Camera Stream (Received at Controller)</h4>
-            <video 
-                ref={el => { if (el) el.srcObject = remoteCamStreamRef.current; }}
-                autoPlay 
-                playsInline 
-                muted 
-                style={{ width: '320px', height: '240px', border: '1px solid orange' }}
-            />
-          </div>
       )}
+    </div>
+  );
+
+  const renderMonitorItem = (mon) => {
+    const currentCameraId = monitorSourceMap[mon.id];
+    const isConnected = mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected');
+
+    return (
+      <div key={mon.id} style={{
+        ...commonStyles.deviceListItem
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 'bold' }}>{mon.name}</span>
+          <span style={{...commonStyles.statusBadge, backgroundColor: getStatusColor(mon.status) }}>{mon.status}</span>
+        </div>
+        <div style={commonStyles.smallId}>ID: {mon.id}</div>
+
+        {isConnected && (
+          <div style={{ marginTop: '10px' }}>
+            <label htmlFor={`camera-select-${mon.id}`} style={commonStyles.label}>Select Camera Source:</label>
+            <select
+              id={`camera-select-${mon.id}`}
+              value={currentCameraId || ''}
+              onChange={(e) => switchMonitorCamera(mon.id, e.target.value || null)}
+              style={{
+                ...commonStyles.button,
+                backgroundColor: 'white',
+                color: '#333',
+                width: '100%',
+                padding: '8px'
+              }}
+            >
+              <option value="">No Signal</option>
+              {cameras
+                .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
+                .map(cam => (
+                  <option key={cam.id} value={cam.id}>
+                    {cam.name} {cam.status === 'connected_streaming' ? '(Streaming)' : '(Connected)'}
+                  </option>
+                ))
+              }
+            </select>
+          </div>
+        )}
+
+        <div style={commonStyles.buttonGroup}>
+          <button
+            onClick={() => handlePrepareOfferForMonitor(mon.id)}
+            disabled={mon.status === 'connected_to_controller' || mon.status?.includes('error')}
+            style={{...commonStyles.button, ...(mon.status === 'connected_to_controller' || mon.status?.includes('error') && commonStyles.buttonDisabled)}}
+          >
+            {mon.status === 'connected_to_controller' ? 'Connected' : 'Prepare Offer'}
+          </button>
+          <button
+            onClick={() => setExpandedMonitorJson(expandedMonitorJson === mon.id ? null : mon.id)}
+            style={commonStyles.button}
+          >
+            {expandedMonitorJson === mon.id ? 'Hide' : 'Show'} Details
+          </button>
+        </div>
+        
+        {expandedMonitorJson === mon.id && (
+          <div style={{marginTop: '10px', display: 'flex', flexDirection:'column', gap: '15px'}}>
+            {mon.offerJsonFromController && (
+              <div>
+                <label htmlFor={`monOffer-${mon.id}`} style={commonStyles.label}>
+                  Offer for {mon.name}: {currentCameraId ? `(from ${getCameraById(currentCameraId)?.name || 'selected camera'})` : '(No Signal)'}
+                </label>
+                <textarea
+                  id={`monOffer-${mon.id}`}
+                  readOnly
+                  value={mon.offerJsonFromController}
+                  style={commonStyles.textarea}
+                />
+                <button
+                  onClick={() => copyToClipboard(mon.offerJsonFromController, "Offer for Monitor")}
+                  style={{...commonStyles.button, marginTop: '5px'}}
+                >
+                  Copy Offer
+                </button>
+              </div>
+            )}
+            {mon.status !== 'connected_to_controller' && mon.offerJsonFromController && (
+              <div>
+                <label htmlFor={`monAnswer-${mon.id}`} style={commonStyles.label}>Paste Answer from {mon.name}:</label>
+                <textarea
+                  id={`monAnswer-${mon.id}`}
+                  placeholder={`Paste Answer for ${mon.name}`}
+                  value={currentMonitorIdForAnswer === mon.id ? answerFromMonitorInput : ''}
+                  onChange={e => { setCurrentMonitorIdForAnswer(mon.id); setAnswerFromMonitorInput(e.target.value); }}
+                  style={commonStyles.textarea}
+                  disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
+                />
+                <button
+                  onClick={() => handleAcceptAnswerFromMonitor(mon.id)}
+                  disabled={currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput}
+                  style={{...commonStyles.button, marginTop: '5px', ...((currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput) && commonStyles.buttonDisabled)}}
+                >
+                  Process Answer
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={commonStyles.pageContainer}>
+      <header style={commonStyles.header}>
+        <h1 style={commonStyles.title}>Controller Dashboard</h1>
+        <p style={commonStyles.status}>Controller Status: {status}</p>
+        {error && <p style={commonStyles.error}>Error: {error}</p>}
+      </header>
+
+      <div style={commonStyles.mainContentArea}>
+        {selectedCameraId && selectedCameraStream && (
+          <section style={commonStyles.card}>
+            <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>
+              Live Preview: {cameras.find(c => c.id === selectedCameraId)?.name || 'Selected Camera'}
+            </h2>
+            <video
+              id="selected-camera-video-preview"
+              ref={el => { if (el && el.srcObject !== selectedCameraStream) el.srcObject = selectedCameraStream; }}
+              autoPlay
+              playsInline
+              muted
+              style={commonStyles.video}
+            />
+          </section>
+        )}
+        {!selectedCameraId && (
+          <section style={commonStyles.card}>
+            <p style={{textAlign: 'center', margin: '20px'}}>No camera selected for preview.</p>
+          </section>
+        )}
+
+        <div style={commonStyles.deviceListContainer}>
+          <div style={commonStyles.deviceColumn}>
+            <section style={commonStyles.card}>
+              <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Camera Management</h2>
+              <label htmlFor="newCamOffer" style={commonStyles.label}>Register New Camera (Paste Offer):</label>
+              <textarea
+                id="newCamOffer"
+                placeholder="Paste Camera's Offer JSON here"
+                value={newCamOfferInput}
+                onChange={e => setNewCamOfferInput(e.target.value)}
+                style={commonStyles.textarea}
+              />
+              <button
+                onClick={handleProcessNewCameraOffer}
+                style={{...commonStyles.button, ...(!newCamOfferInput && commonStyles.buttonDisabled)}}
+                disabled={!newCamOfferInput}
+              >
+                Process Camera Offer
+              </button>
+            </section>
+            <section style={commonStyles.card}>
+              <h3 style={{...commonStyles.title, fontSize: '1.2em'}}>Registered Cameras ({cameras.length})</h3>
+              {cameras.length === 0 ? <p>No cameras registered.</p> : cameras.map(renderCameraItem)}
+            </section>
+          </div>
+
+          <div style={commonStyles.deviceColumn}>
+            <section style={commonStyles.card}>
+              <h2 style={{...commonStyles.title, fontSize: '1.4em'}}>Monitor Management</h2>
+              <button onClick={handleAddNewMonitor} style={commonStyles.button}>
+                Add New Monitor
+              </button>
+            </section>
+            <section style={commonStyles.card}>
+              <h3 style={{...commonStyles.title, fontSize: '1.2em'}}>Registered Monitors ({monitors.length})</h3>
+              {monitors.length === 0 ? <p>No monitors registered.</p> : monitors.map(renderMonitorItem)}
+            </section>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default ControllerScreen; 
+export default ControllerScreen;
