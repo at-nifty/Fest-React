@@ -24,6 +24,8 @@ function ControllerScreen() {
   const [currentMonitorIdForOffer, setCurrentMonitorIdForOffer] = useState(null);
   const [currentMonitorIdForAnswer, setCurrentMonitorIdForAnswer] = useState(null);
   const [answerFromMonitorInput, setAnswerFromMonitorInput] = useState('');
+  const [cameraOfferFile, setCameraOfferFile] = useState(null); // For file input
+  const [monitorAnswerFile, setMonitorAnswerFile] = useState(null); // For file input
 
   const cameraPcRefs = useRef({});
   const cameraStreamRefs = useRef({});
@@ -198,8 +200,23 @@ function ControllerScreen() {
 
   // Existing handlers with updated monitor offer handling
   const handleProcessNewCameraOffer = async () => {
-    if (!newCamOfferInput) {
-      setError("New Camera Offer input is empty.");
+    let offerInputToProcess = newCamOfferInput;
+
+    if (cameraOfferFile) {
+      try {
+        offerInputToProcess = await cameraOfferFile.text();
+        setCameraOfferFile(null); // Reset file input
+        const offerFileNameInput = document.getElementById('cameraOfferFileInput');
+        if (offerFileNameInput) offerFileNameInput.value = ''; // Reset file input display
+      } catch (e) {
+        setError("Error reading camera offer file: " + e.message);
+        setStatus("Failed to read camera offer file.");
+        return;
+      }
+    }
+
+    if (!offerInputToProcess) {
+      setError("New Camera Offer input or file is empty.");
       return;
     }
     
@@ -207,7 +224,7 @@ function ControllerScreen() {
     setError('');
     let parsedRawOffer;
     try {
-      parsedRawOffer = JSON.parse(newCamOfferInput);
+      parsedRawOffer = JSON.parse(offerInputToProcess);
     } catch (e) {
       setError("Invalid JSON in Camera Offer: " + e.message);
       setStatus("Failed to parse camera offer.");
@@ -245,9 +262,22 @@ function ControllerScreen() {
             sdp: pc.localDescription.toJSON(),
             iceCandidates: collectedIceCandidates,
           };
-          setCameraAnswer(newCamId, JSON.stringify(answer, null, 2), collectedIceCandidates);
+          const answerJsonString = JSON.stringify(answer, null, 2);
+          setCameraAnswer(newCamId, answerJsonString, collectedIceCandidates);
           updateCameraStatus(newCamId, 'answer_ready');
           setStatus("Answer generated for camera " + (getCameraById(newCamId)?.name || newCamId));
+
+          // Download answer JSON file
+          const blob = new Blob([answerJsonString], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `controller_answer_for_${getCameraById(newCamId)?.name || newCamId}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setStatus("Answer generated and downloaded for camera " + (getCameraById(newCamId)?.name || newCamId));
         }
       };
 
@@ -359,6 +389,18 @@ function ControllerScreen() {
           setOfferForMonitor(monitorId, offerForMonitorJson, collectedIceCandidates, offerSdp);
           updateMonitorStatus(monitorId, 'offer_ready_for_monitor');
           setStatus("Offer for " + monitor.name + " ready.");
+
+          // Download offer JSON file for monitor
+          const blob = new Blob([offerForMonitorJson], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `controller_offer_for_${monitor.name}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setStatus("Offer for " + monitor.name + " ready and downloaded.");
         }
       };
 
@@ -383,14 +425,46 @@ function ControllerScreen() {
 
   const handleAcceptAnswerFromMonitor = useCallback(async (monitorId) => {
     const monitor = getMonitorById(monitorId);
-    if (!monitor || !answerFromMonitorInput) {
-      setError("Monitor not found or answer input missing for " + monitorId);
+    let answerInputToProcess = answerFromMonitorInput;
+
+    if (monitorAnswerFile && currentMonitorIdForAnswer === monitorId) {
+      try {
+        const fileContent = await monitorAnswerFile.text();
+        setMonitorAnswerFile(null); // Reset file input state first
+        const answerFileNameInput = document.getElementById(`monitorAnswerFileInput-${monitorId}`);
+        if (answerFileNameInput) answerFileNameInput.value = ''; 
+
+        if (!fileContent) { // Check if file content is empty
+          setError(`Uploaded answer file for ${monitor ? monitor.name : monitorId} is empty.`);
+          setStatus("Failed to process empty answer file.");
+          return;
+        }
+        answerInputToProcess = fileContent;
+      } catch (e) {
+        setError("Error reading monitor answer file: " + e.message);
+        setStatus("Failed to read monitor answer file.");
+        setMonitorAnswerFile(null); // Clear file state on error too
+        const answerFileNameInput = document.getElementById(`monitorAnswerFileInput-${monitorId}`);
+        if (answerFileNameInput) answerFileNameInput.value = '';
+        return;
+      }
+    }
+
+    if (!monitor) {
+      setError(`Monitor with ID ${monitorId} not found.`);
+      setStatus("Error processing monitor answer.");
+      return;
+    }
+
+    if (!answerInputToProcess) {
+      setError(`Answer input or file is missing for ${monitor.name}. Please provide the answer text or upload a valid file.`);
+      setStatus("Error processing monitor answer.");
       return;
     }
 
     let answerPayload;
     try {
-      answerPayload = JSON.parse(answerFromMonitorInput);
+      answerPayload = JSON.parse(answerInputToProcess);
     } catch (e) {
       setError("Invalid JSON in Monitor Answer: " + e.message);
       return;
@@ -411,7 +485,8 @@ function ControllerScreen() {
     updateMonitorStatus(monitorId, 'controller_processing_answer');
 
     try {
-      const answerPayload = JSON.parse(answerFromMonitorInput);
+      // Re-parse to ensure we use the (potentially file-loaded) answerInputToProcess
+      answerPayload = JSON.parse(answerInputToProcess);
       if (!answerPayload || !answerPayload.sdp || answerPayload.sdp.type !== 'answer') {
         setError("Invalid answer structure from " + monitor.name);
         updateMonitorStatus(monitorId, 'error_invalid_answer');
@@ -461,7 +536,7 @@ function ControllerScreen() {
 
     setAnswerFromMonitorInput('');
     setCurrentMonitorIdForAnswer(null);
-  }, [answerFromMonitorInput, getMonitorById, setMonitorAnswer, updateMonitorStatus, switchMonitorCamera]);
+  }, [answerFromMonitorInput, getMonitorById, setMonitorAnswer, updateMonitorStatus, switchMonitorCamera, monitorAnswerFile, currentMonitorIdForAnswer, setError, setStatus]);
 
   const handleAddNewMonitor = useCallback(() => {
     const newMonitorId = addMonitorPlaceholder();
@@ -592,6 +667,7 @@ function ControllerScreen() {
   const renderMonitorItem = (mon) => {
     const currentCameraId = monitorSourceMap[mon.id];
     const isConnected = mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected');
+    const isProcessingAnswer = currentMonitorIdForAnswer === mon.id && (!!answerFromMonitorInput || !!monitorAnswerFile);
 
     return (
       <div key={mon.id} className="device-list-item">
@@ -677,10 +753,25 @@ function ControllerScreen() {
                   className="textarea"
                   disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
                 />
+                <div className="file-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
+                  <label htmlFor={`monitorAnswerFileInput-${mon.id}`} className="label">または応答ファイルをアップロード:</label>
+                  <input 
+                    id={`monitorAnswerFileInput-${mon.id}`}
+                    type="file" 
+                    accept=".json"
+                    onChange={(e) => { 
+                      setMonitorAnswerFile(e.target.files[0]); 
+                      setCurrentMonitorIdForAnswer(mon.id); // Ensure this monitor is targeted for file upload
+                      setAnswerFromMonitorInput(''); // Clear textarea if file is chosen
+                    }}
+                    className="input"
+                    disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
+                  />
+                </div>
                 <button
                   onClick={() => handleAcceptAnswerFromMonitor(mon.id)}
-                  disabled={currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput}
-                  className={`button ${(currentMonitorIdForAnswer !== mon.id || !answerFromMonitorInput) ? 'button-disabled' : ''}`}
+                  disabled={!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController) }
+                  className={`button ${(!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController)) ? 'button-disabled' : ''}`}
                 >
                   応答を処理
                 </button>
@@ -810,10 +901,20 @@ function ControllerScreen() {
                 onChange={e => setNewCamOfferInput(e.target.value)}
                 className="textarea"
               />
+              <div className="file-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
+                <label htmlFor="cameraOfferFileInput" className="label">またはオファーファイルをアップロード:</label>
+                <input 
+                  id="cameraOfferFileInput"
+                  type="file" 
+                  accept=".json"
+                  onChange={(e) => setCameraOfferFile(e.target.files[0])} 
+                  className="input"
+                />
+              </div>
               <button
                 onClick={handleProcessNewCameraOffer}
-                className={`button ${!newCamOfferInput ? 'button-disabled' : ''}`}
-                disabled={!newCamOfferInput}
+                className={`button ${!newCamOfferInput && !cameraOfferFile ? 'button-disabled' : ''}`}
+                disabled={!newCamOfferInput && !cameraOfferFile}
               >
                 カメラオファーを処理
               </button>

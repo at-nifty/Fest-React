@@ -115,6 +115,7 @@ function CameraScreen() {
   const [error, setError] = useState('');
   const [cameraName, setCameraName] = useState('');
   const [sourceType, setSourceType] = useState('camera'); // 'camera' or 'screen'
+  const [controllerAnswerFile, setControllerAnswerFile] = useState(null); // For file input
 
   const [availableVideoDevices, setAvailableVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -275,8 +276,21 @@ function CameraScreen() {
           sdp: pc.localDescription.toJSON(),
           iceCandidates: collectedIceCandidatesRef.current
         };
-        setOfferSignal(JSON.stringify(offerSignalPayload, null, 2));
+        const offerJsonString = JSON.stringify(offerSignalPayload, null, 2);
+        setOfferSignal(offerJsonString);
         setStatus('カメラ: オファーが作成されました。コントローラーにコピーしてください。');
+
+        // Download offer JSON file
+        const blob = new Blob([offerJsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `camera_offer_${cameraName || 'default'}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus('カメラ: オファーが作成され、ファイルとしてダウンロードされました。');
       }
     };
 
@@ -309,14 +323,30 @@ function CameraScreen() {
       setError("カメラ: PeerConnectionが初期化されていません。先にオファーを作成してください。");
       return;
     }
-    if (!answerSignalInput) {
+
+    let answerInputToProcess = answerSignalInput;
+
+    if (controllerAnswerFile) {
+      try {
+        answerInputToProcess = await controllerAnswerFile.text();
+        setControllerAnswerFile(null); // Reset file input
+        const answerFileNameInput = document.getElementById('controllerAnswerFileInput');
+        if (answerFileNameInput) answerFileNameInput.value = ''; // Reset file input display
+      } catch (e) {
+        setError("Error reading controller answer file: " + e.message);
+        setStatus("Failed to read controller answer file.");
+        return;
+      }
+    }
+
+    if (!answerInputToProcess) {
       setError("カメラ: コントローラーからの応答が空です。");
       return;
     }
     setStatus("カメラ: コントローラーからの応答を処理中...");
     setError('');
     try {
-      const answerPayload = JSON.parse(answerSignalInput);
+      const answerPayload = JSON.parse(answerInputToProcess);
       if (!answerPayload || typeof answerPayload.sdp !== 'object' || answerPayload.sdp.type !== 'answer') {
         setError("カメラ: 無効な応答信号を受信しました。");
         return;
@@ -522,10 +552,20 @@ function CameraScreen() {
                 className="textarea"
                 disabled={!offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
               />
+              <div className="file-input-container">
+                <label htmlFor="controllerAnswerFileInput">または応答ファイルをアップロード:</label>
+                <input 
+                  id="controllerAnswerFileInput"
+                  type="file" 
+                  accept=".json"
+                  onChange={(e) => setControllerAnswerFile(e.target.files[0])} 
+                  disabled={!offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
+                />
+              </div>
             <button 
               onClick={processAnswerFromController} 
-              disabled={!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
-                className={`button ${!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected') ? 'button-disabled' : ''}`}
+              disabled={!answerSignalInput && !controllerAnswerFile || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
+                className={`button ${!answerSignalInput && !controllerAnswerFile || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected') ? 'button-disabled' : ''}`}
             >
                 {pcRef.current && pcRef.current.connectionState === 'connected' ? '接続済み' : '応答を処理'}
             </button>

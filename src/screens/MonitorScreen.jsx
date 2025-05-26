@@ -119,6 +119,9 @@ const commonStyles = {
     marginBottom: '8px',
     fontWeight: 'bold',
     color: '#555'
+  },
+  input: {
+    // Assuming you have a style for input or reuse one
   }
 };
 
@@ -129,6 +132,7 @@ function MonitorScreen() {
   const [status, setStatus] = useState('Waiting for Offer from Controller');
   const [error, setError] = useState('');
   const [monitorName, setMonitorName] = useState('');
+  const [controllerOfferFile, setControllerOfferFile] = useState(null); // For file input
   const pcRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const videoRef = useRef(null);
@@ -176,8 +180,23 @@ function MonitorScreen() {
   };
 
   const processOfferAndCreateAnswer = async () => {
-    if (!controllerOfferJsonInput) {
-      setError("Monitor: Controller Offer input is empty.");
+    let offerInputToProcess = controllerOfferJsonInput;
+
+    if (controllerOfferFile) {
+      try {
+        offerInputToProcess = await controllerOfferFile.text();
+        setControllerOfferFile(null); // Reset file input
+        const offerFileNameInput = document.getElementById('controllerOfferFileInput');
+        if (offerFileNameInput) offerFileNameInput.value = ''; // Reset file input display
+      } catch (e) {
+        setError("Monitor: Error reading controller offer file: " + e.message);
+        setStatus("Monitor: Failed to read offer file.");
+        return;
+      }
+    }
+
+    if (!offerInputToProcess) {
+      setError("Monitor: Controller Offer input or file is empty.");
       return;
     }
     setStatus("Monitor: Processing Offer...");
@@ -187,7 +206,7 @@ function MonitorScreen() {
 
     let offerPayload;
     try {
-      offerPayload = JSON.parse(controllerOfferJsonInput);
+      offerPayload = JSON.parse(offerInputToProcess);
     } catch (e) {
       setError("Monitor: Invalid JSON in Controller Offer: " + e.message);
       setStatus("Monitor: Failed to parse offer.");
@@ -222,8 +241,21 @@ function MonitorScreen() {
             sdp: pc.localDescription.toJSON(),
             iceCandidates: collectedIceCandidatesRef.current
           };
-          setMonitorAnswerJson(JSON.stringify(answerPayload, null, 2));
+          const answerJsonString = JSON.stringify(answerPayload, null, 2);
+          setMonitorAnswerJson(answerJsonString);
           setStatus('Monitor: Answer created. Copy to Controller.');
+
+          // Download answer JSON file
+          const blob = new Blob([answerJsonString], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `monitor_answer_${monitorName || 'default'}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setStatus('Monitor: Answer created and downloaded.');
         }
       };
 
@@ -402,10 +434,24 @@ function MonitorScreen() {
                 style={commonStyles.textarea}
                 disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
             />
+            <div className="file-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
+              <label htmlFor="controllerOfferFileInput" style={commonStyles.label}>またはオファーファイルをアップロード:</label>
+              <input 
+                id="controllerOfferFileInput"
+                type="file" 
+                accept=".json"
+                onChange={(e) => {
+                  setControllerOfferFile(e.target.files[0]);
+                  setControllerOfferJsonInput(''); // Clear textarea if file is chosen
+                }} 
+                style={commonStyles.input} // Assuming you have a style for input or reuse one
+                disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
+              />
+            </div>
           <button 
             onClick={processOfferAndCreateAnswer} 
-              style={{ ...commonStyles.button, ...((!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')) && commonStyles.buttonDisabled) }}
-            disabled={!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}
+              style={{ ...commonStyles.button, ...((!controllerOfferJsonInput && !controllerOfferFile || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')) && commonStyles.buttonDisabled) }}
+            disabled={!controllerOfferJsonInput && !controllerOfferFile || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}
           >
               {pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed' ? 'オファー処理中...' : 'オファーを処理'}
           </button>
