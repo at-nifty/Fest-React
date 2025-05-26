@@ -10,7 +10,7 @@ function ControllerScreen() {
     cameras, monitors,
     addCamera, setCameraAnswer, updateCameraStatus, getCameraById,
     removeCamera, removeMonitor,
-    addMonitorPlaceholder,
+    addMonitorPlaceholder, 
     selectCamera, selectedCameraId, // Only used for preview now
     setOfferForMonitor, setMonitorAnswer, updateMonitorStatus, getMonitorById,
     initializeCameras, initializeMonitors, updateMonitorName // ストアに初期化関数があることを想定
@@ -20,7 +20,7 @@ function ControllerScreen() {
   const [expandedCameraJson, setExpandedCameraJson] = useState(null);
   const [expandedMonitorJson, setExpandedMonitorJson] = useState(null);
   const [monitorSourceMap, setMonitorSourceMap] = useState({});
-
+  
   const [currentMonitorIdForOffer, setCurrentMonitorIdForOffer] = useState(null);
   const [currentMonitorIdForAnswer, setCurrentMonitorIdForAnswer] = useState(null);
   const [answerFromMonitorInput, setAnswerFromMonitorInput] = useState('');
@@ -72,14 +72,14 @@ function ControllerScreen() {
     }
 
     try {
-      const newStream = cameraId ? cameraStreamRefs.current[cameraId] : createEmptyMediaStream();
+    const newStream = cameraId ? cameraStreamRefs.current[cameraId] : createEmptyMediaStream();
       if (!newStream) {
         console.error(CTRL_LOG_PREFIX + " Cannot switch camera: Stream not available", cameraId);
         return;
       }
 
       const tracks = newStream.getTracks();
-      const senders = pc.getSenders();
+    const senders = pc.getSenders();
 
       // Match tracks with senders by kind
       for (const track of tracks) {
@@ -88,12 +88,12 @@ function ControllerScreen() {
           await sender.replaceTrack(track);
           if (track.kind === 'audio') {
             track.enabled = false; // Keep audio track muted
-          }
         }
       }
+    }
 
-      setMonitorSourceMap(prev => ({ ...prev, [monitorId]: cameraId }));
-      setStatus(`Switched ${monitor.name} to ${cameraId ? getCameraById(cameraId)?.name || 'unknown camera' : 'No Signal'}`);
+    setMonitorSourceMap(prev => ({ ...prev, [monitorId]: cameraId }));
+    setStatus(`Switched ${monitor.name} to ${cameraId ? getCameraById(cameraId)?.name || 'unknown camera' : 'No Signal'}`);
       console.log(CTRL_LOG_PREFIX + ` Successfully switched ${monitor.name} to ${cameraId ? 'camera ' + cameraId : 'No Signal'}`);
     } catch (err) {
       console.error(CTRL_LOG_PREFIX + " Error switching camera for monitor " + monitorId, err);
@@ -202,7 +202,7 @@ function ControllerScreen() {
       setError("New Camera Offer input is empty.");
       return;
     }
-
+    
     setStatus("Processing new camera offer...");
     setError('');
     let parsedRawOffer;
@@ -228,7 +228,7 @@ function ControllerScreen() {
       const pc = new RTCPeerConnection();
       cameraPcRefs.current[newCamId] = pc;
       const collectedIceCandidates = [];
-
+      
       pc.onicecandidate = event => {
         if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
       };
@@ -452,7 +452,7 @@ function ControllerScreen() {
 
       // 接続成功時に接続情報を隠す
       setExpandedMonitorJson(null);
-
+      
     } catch (err) {
       console.error(CTRL_LOG_PREFIX + " Error processing answer for monitor " + monitorId, err);
       setError(`Failed to process answer for ${monitor.name}: ${err.message}`);
@@ -536,21 +536,21 @@ function ControllerScreen() {
       </div>
       <div className="small-id">ID: {cam.id}</div>
       <div className="button-group">
-        <button
-          onClick={() => selectCamera(cam.id)}
+        <button 
+          onClick={() => selectCamera(cam.id)} 
           disabled={selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected')}
           className={`button ${selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected') ? 'button-disabled' : ''}`}
         >
           {selectedCameraId === cam.id ? '現在のソース' :
             (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'ソースとして選択' :
               (cam.status === 'track_received_no_stream' ? 'ストリーム問題' : '未ストリーミング')
-            )}
+           )}
         </button>
         {(cam.answerJson || cam.status === 'error_offer_processing') && (
-          <button
-            onClick={() => setExpandedCameraJson(expandedCameraJson === cam.id ? null : cam.id)}
-            className="button"
-          >
+        <button
+          onClick={() => setExpandedCameraJson(expandedCameraJson === cam.id ? null : cam.id)}
+          className="button"
+        >
             {expandedCameraJson === cam.id ? '応答を隠す' : '応答を表示'}
           </button>
         )}
@@ -566,18 +566,18 @@ function ControllerScreen() {
           {cam.answerJson ? (
             <>
               <label htmlFor={`camAnswer-${cam.id}`} className="label">{cam.name}の応答:</label>
-              <textarea
-                id={`camAnswer-${cam.id}`}
-                readOnly
-                value={cam.answerJson}
-                className="textarea"
-              />
-              <button
-                onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
-                className="button"
-              >
+          <textarea
+            id={`camAnswer-${cam.id}`}
+            readOnly
+            value={cam.answerJson}
+            className="textarea"
+          />
+          <button
+            onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
+            className="button"
+          >
                 応答をコピー
-              </button>
+          </button>
             </>
           ) : cam.status === 'error_offer_processing' && (
             <div className="error-message">
@@ -718,28 +718,28 @@ function ControllerScreen() {
           </div>
 
           {previewTab === 'cameras' && (
-            <div className="video-grid">
-              {cameras
-                .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
-                .map(cam => (
-                  <div key={cam.id} className="video-container">
-                    <h3 className="video-title">{cam.name}</h3>
-                    <video
-                      id={`camera-preview-${cam.id}`}
-                      ref={element => {
-                        if (element && cameraStreamRefs.current[cam.id]) {
-                          element.srcObject = cameraStreamRefs.current[cam.id];
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="video"
-                    />
+          <div className="video-grid">
+            {cameras
+              .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
+              .map(cam => (
+                <div key={cam.id} className="video-container">
+                  <h3 className="video-title">{cam.name}</h3>
+                  <video
+                    id={`camera-preview-${cam.id}`}
+                    ref={element => {
+                      if (element && cameraStreamRefs.current[cam.id]) {
+                        element.srcObject = cameraStreamRefs.current[cam.id];
+                      }
+                    }}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="video"
+                  />
                     <span className="status-badge" data-status={cam.status}>{cam.status}</span>
-                  </div>
-                ))}
-              {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').length === 0 && (
+                </div>
+              ))}
+            {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').length === 0 && (
                 <p className="preview-message">プレビューできるカメラがありません。</p>
               )}
             </div>
@@ -793,8 +793,8 @@ function ControllerScreen() {
                 })}
               {monitors.filter(mon => mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected')).length === 0 && (
                 <p className="preview-message">プレビュー可能なモニターがありません。</p>
-              )}
-            </div>
+            )}
+          </div>
           )}
         </section>
 

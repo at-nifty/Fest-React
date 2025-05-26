@@ -41,9 +41,9 @@ export const useAppStore = create((set, get) => ({
       offerJson,
       rawOffer,
       iceCandidatesFromCamera,
-      answerJson: null,
-      iceCandidatesForControllerAnswer: [],
-      status: 'offer_received',
+      answerJson: null, 
+      iceCandidatesForControllerAnswer: [], 
+      status: 'offer_received', 
     };
     console.log(STORE_LOG_PREFIX + " Adding new camera: ", newCamera);
     set((state) => ({ cameras: [...state.cameras, newCamera] }));
@@ -122,7 +122,7 @@ export const useAppStore = create((set, get) => ({
       monitors: state.monitors.filter(mon => mon.id !== monitorId),
     }));
   },
-
+  
   setOfferForMonitor: (monitorId, offerJsonFromController, iceCandidatesForControllerOffer, rawOfferFromController) => {
     console.log(STORE_LOG_PREFIX + " Setting offer for monitor " + monitorId + ": ", { offerJsonFromController: offerJsonFromController.substring(0,50) + "...", iceCandidatesForControllerOffer });
     set((state) => ({

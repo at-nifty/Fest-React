@@ -189,11 +189,11 @@ function CameraScreen() {
           setSourceType('camera');
         });
       } else {
-        const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
+    const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
         stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        setAvailableVideoDevices(videoDevices);
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      setAvailableVideoDevices(videoDevices);
         if (deviceId && !videoDevices.find(d => d.deviceId === deviceId)) {
           setSelectedDeviceId('');
         }
@@ -235,10 +235,10 @@ function CameraScreen() {
       }
       setStatus('メディアの起動中にエラーが発生しました。');
       if (sourceType === 'camera') {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        setAvailableVideoDevices(videoDevices);
-        if (deviceId && !videoDevices.find(d => d.deviceId === deviceId)) {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      setAvailableVideoDevices(videoDevices);
+      if (deviceId && !videoDevices.find(d => d.deviceId === deviceId)) {
           setSelectedDeviceId('');
         }
       }
@@ -344,8 +344,8 @@ function CameraScreen() {
           setOfferSignal('');
           setAnswerSignalInput('');
           setStatus('カメラが正常に接続されました');
-        }
-      };
+    }
+  };
     }
   }, [pcRef.current]);
 
@@ -401,7 +401,7 @@ function CameraScreen() {
               placeholder="カメラの名前を入力"
               className="input"
             />
-          </div>
+            </div>
 
           <div className="source-selection" style={{ marginBottom: '20px' }}>
             <label className="label">映像ソースの選択:</label>
@@ -415,7 +415,7 @@ function CameraScreen() {
               >
                 カメラを使用
               </button>
-              <button
+            <button 
                 onClick={() => {
                   setSourceType('screen');
                   setLocalStream(null);
@@ -423,16 +423,16 @@ function CameraScreen() {
                 className={`button ${sourceType === 'screen' ? 'button-primary' : 'button-secondary'}`}
               >
                 画面を共有
-              </button>
+            </button>
             </div>
           </div>
 
           {sourceType === 'camera' && (
             <div className="device-selection">
               <label htmlFor="videoDevices" className="label">カメラを選択:</label>
-              <select
+              <select 
                 id="videoDevices"
-                value={selectedDeviceId}
+                value={selectedDeviceId} 
                 onChange={e => {
                   const newDeviceId = e.target.value;
                   setSelectedDeviceId(newDeviceId);
@@ -450,7 +450,7 @@ function CameraScreen() {
                 ))}
               </select>
             </div>
-          )}
+            )}
 
           <div className="video-preview">
             <h3 className="title title-subsection">プレビュー</h3>
@@ -481,26 +481,26 @@ function CameraScreen() {
             <p>接続状態: {status}</p>
             {error && <p className="error">接続エラー: {error}</p>}
           </div>
-
+          
           <div className="connection-controls">
-            <button
-              onClick={initializePcAndCreateOffer}
+            <button 
+              onClick={initializePcAndCreateOffer} 
               disabled={!localStream || !!offerSignal}
               className={`button ${!localStream || !!offerSignal ? 'button-disabled' : ''}`}
             >
               {offerSignal ? 'オファー準備完了' : 'オファーを作成'}
             </button>
 
-            {offerSignal && (
+          {offerSignal && (
               <div className="json-display">
                 <label htmlFor="offerJson" className="label">コントローラーに送信するオファー:</label>
-                <textarea
+              <textarea 
                   id="offerJson"
-                  ref={offerSignalTextareaRef}
-                  value={offerSignal}
-                  readOnly
+                ref={offerSignalTextareaRef}
+                value={offerSignal} 
+                readOnly 
                   className="textarea"
-                />
+              />
                 <div className="button-group">
                   <button
                     onClick={() => copyToClipboard(offerSignal, "オファー")}
@@ -508,27 +508,27 @@ function CameraScreen() {
                   >
                     オファーをコピー
                   </button>
-                </div>
               </div>
-            )}
+            </div>
+          )}
 
             <div className="answer-section">
               <label htmlFor="answerInput" className="label">コントローラーからの応答を貼り付け:</label>
-              <textarea
+            <textarea 
                 id="answerInput"
-                value={answerSignalInput}
-                onChange={e => setAnswerSignalInput(e.target.value)}
+              value={answerSignalInput} 
+              onChange={e => setAnswerSignalInput(e.target.value)} 
                 placeholder="コントローラーの応答JSONをここに貼り付け"
                 className="textarea"
                 disabled={!offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
               />
-              <button
-                onClick={processAnswerFromController}
-                disabled={!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
+            <button 
+              onClick={processAnswerFromController} 
+              disabled={!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected')}
                 className={`button ${!answerSignalInput || !offerSignal || (pcRef.current && pcRef.current.connectionState === 'connected') ? 'button-disabled' : ''}`}
-              >
+            >
                 {pcRef.current && pcRef.current.connectionState === 'connected' ? '接続済み' : '応答を処理'}
-              </button>
+            </button>
             </div>
           </div>
         </section>

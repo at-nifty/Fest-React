@@ -11,7 +11,7 @@ const commonStyles = {
     boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#f0f2f5',
+    backgroundColor: '#f0f2f5', 
     gap: '0'
   },
   header: {
@@ -202,7 +202,7 @@ function MonitorScreen() {
 
     try {
       if (pcRef.current) pcRef.current.close();
-      const pc = new RTCPeerConnection({});
+      const pc = new RTCPeerConnection({}); 
       pcRef.current = pc;
 
       pc.onicecandidate = (event) => {
@@ -240,7 +240,7 @@ function MonitorScreen() {
           setMonitorAnswerJson('');
         }
       };
-
+      
       pc.oniceconnectionstatechange = () => setStatus("Monitor ICE: " + pc.iceConnectionState);
       pc.onsignalingstatechange = () => console.log(MON_LOG_PREFIX + "Signaling state: " + pc.signalingState);
 
@@ -260,7 +260,7 @@ function MonitorScreen() {
       pc.addTransceiver('audio', { direction: 'recvonly' });
 
       await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.sdp));
-
+      
       if (offerPayload.iceCandidates && Array.isArray(offerPayload.iceCandidates)) {
         for (const candidate of offerPayload.iceCandidates) {
           if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("Error adding remote ICE: " + e));
@@ -394,35 +394,35 @@ function MonitorScreen() {
 
           <div className="offer-section">
             <label htmlFor="controllerOffer" style={commonStyles.label}>コントローラーからのオファーを貼り付けてください:</label>
-            <textarea
-              id="controllerOffer"
+            <textarea 
+                id="controllerOffer"
               placeholder="コントローラーのオファーJSONをここに貼り付け"
-              value={controllerOfferJsonInput}
-              onChange={e => setControllerOfferJsonInput(e.target.value)}
-              style={commonStyles.textarea}
-              disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
+                value={controllerOfferJsonInput} 
+                onChange={e => setControllerOfferJsonInput(e.target.value)} 
+                style={commonStyles.textarea}
+                disabled={pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed'}
             />
-            <button
-              onClick={processOfferAndCreateAnswer}
+          <button 
+            onClick={processOfferAndCreateAnswer} 
               style={{ ...commonStyles.button, ...((!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')) && commonStyles.buttonDisabled) }}
-              disabled={!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}
-            >
+            disabled={!controllerOfferJsonInput || (pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed')}
+          >
               {pcRef.current && pcRef.current.signalingState !== 'stable' && pcRef.current.signalingState !== 'closed' ? 'オファー処理中...' : 'オファーを処理'}
-            </button>
+          </button>
           </div>
-
+          
           {monitorAnswerJson && (
             <div className="json-display">
               <label htmlFor="monitorAnswer" style={commonStyles.label}>生成された応答:</label>
-              <textarea
+              <textarea 
                 id="monitorAnswer"
-                ref={answerTextareaRef}
-                value={monitorAnswerJson}
-                readOnly
+                ref={answerTextareaRef} 
+                value={monitorAnswerJson} 
+                readOnly 
                 style={commonStyles.textarea}
               />
-              <button
-                onClick={() => copyToClipboard(monitorAnswerJson, 'Answer', answerTextareaRef)}
+              <button 
+                  onClick={() => copyToClipboard(monitorAnswerJson, 'Answer', answerTextareaRef)} 
                 style={{ ...commonStyles.button, marginTop: '10px' }}
               >
                 応答をコピー
