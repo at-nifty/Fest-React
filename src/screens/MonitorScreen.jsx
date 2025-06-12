@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 const MON_LOG_PREFIX = "[MonitorScreen]";
 
@@ -20,6 +20,9 @@ const commonStyles = {
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
     width: '100vw',
     boxSizing: 'border-box',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   mainContentArea: {
     display: 'flex',
@@ -32,6 +35,11 @@ const commonStyles = {
     margin: '0 0 10px 0',
     color: '#333',
     fontSize: '1.8em'
+  },
+  headerRole: {
+    fontSize: '1.2em',
+    fontWeight: 'bold',
+    color: '#555'
   },
   status: {
     marginBottom: '5px',
@@ -308,7 +316,7 @@ function MonitorScreen() {
     }
   };
 
-  const fallbackCopyToClipboard = (text, type, textareaRefForFallback) => {
+  const fallbackCopyToClipboard = useCallback((text, type, textareaRefForFallback) => {
     if (textareaRefForFallback && textareaRefForFallback.current) {
       textareaRefForFallback.current.select();
       document.execCommand('copy');
@@ -317,9 +325,9 @@ function MonitorScreen() {
     } else {
       setError("Textarea ref not available for fallback copy for " + type);
     }
-  };
+  }, [setStatus, setError]);
 
-  const copyToClipboard = (textToCopy, type, textareaForFallbackRef) => {
+  const copyToClipboard = useCallback((textToCopy, type, textareaForFallbackRef) => {
     if (!textToCopy) {
       setError("Monitor: No " + type + " text to copy.");
       return;
@@ -331,18 +339,19 @@ function MonitorScreen() {
           setTimeout(() => setStatus(prev => prev === ("Copied " + type + " to clipboard!") ? ("Monitor: " + type + " ready.") : prev), 2000);
         })
         .catch(err => {
-          setError("Failed to copy " + type + ". Please copy manually or grant clipboard permission.");
+          setError("Failed to copy " + type + ". Please copy manually or grant clipboard permission. " + err.message);
           fallbackCopyToClipboard(textToCopy, type, textareaForFallbackRef);
         });
     } else {
       fallbackCopyToClipboard(textToCopy, type, textareaForFallbackRef);
     }
-  };
+  }, [fallbackCopyToClipboard, setError, setStatus]);
 
   return (
     <div style={commonStyles.pageContainer}>
       <header style={commonStyles.header}>
-        <h1 style={commonStyles.title}>モニター設定</h1>
+        <h1 style={commonStyles.title}>Synva Cast</h1>
+        <span style={commonStyles.headerRole}>Monitor</span>
         <p style={commonStyles.status}>モニターの状態: {status}</p>
         {error && <p style={commonStyles.error}>エラー: {error}</p>}
       </header>

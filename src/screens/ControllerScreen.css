@@ -31,6 +31,15 @@
   border-bottom: 1px solid var(--border);
   width: 100vw;
   box-sizing: border-box;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-role {
+  font-size: 1.5em;
+  font-weight: 600;
+  color: var(--text-light);
 }
 
 .main-content-area {

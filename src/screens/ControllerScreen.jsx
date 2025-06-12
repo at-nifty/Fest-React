@@ -5,6 +5,202 @@ import './ControllerScreen.css';
 
 const CTRL_LOG_PREFIX = "[CtrlScreen]";
 
+const CameraItem = React.memo(({ cam, selectedCameraId, onSelectCamera, onToggleExpand, onRemoveCamera, expandedCameraJson, copyToClipboard, getCameraById }) => {
+  return (
+    <div key={cam.id} className={`device-list-item ${selectedCameraId === cam.id ? 'selected-device' : ''}`}>
+      <div className="device-header">
+        <span className="device-name">{cam.name}</span>
+        <span className="status-badge" data-status={cam.status}>{cam.status}</span>
+      </div>
+      <div className="small-id">ID: {cam.id}</div>
+      <div className="button-group">
+        <button 
+          onClick={() => onSelectCamera(cam.id)} 
+          disabled={selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected')}
+          className={`button ${selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected') ? 'button-disabled' : ''}`}
+        >
+          {selectedCameraId === cam.id ? '現在のソース' :
+            (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'ソースとして選択' :
+              (cam.status === 'track_received_no_stream' ? 'ストリーム問題' : '未ストリーミング')
+           )}
+        </button>
+        {(cam.answerJson || cam.status === 'error_offer_processing') && (
+        <button
+          onClick={() => onToggleExpand(cam.id)}
+          className="button"
+        >
+            {expandedCameraJson === cam.id ? '応答を隠す' : '応答を表示'}
+          </button>
+        )}
+        <button
+          onClick={() => onRemoveCamera(cam.id)}
+          className="button button-danger"
+        >
+          カメラを削除
+        </button>
+      </div>
+      {expandedCameraJson === cam.id && (
+        <div className="expanded-content">
+          {cam.answerJson ? (
+            <>
+              <label htmlFor={`camAnswer-${cam.id}`} className="label">{cam.name}の応答:</label>
+          <textarea
+            id={`camAnswer-${cam.id}`}
+            readOnly
+            value={cam.answerJson}
+            className="textarea"
+          />
+          <button
+            onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
+            className="button"
+          >
+                応答をコピー
+          </button>
+            </>
+          ) : cam.status === 'error_offer_processing' && (
+            <div className="error-message">
+              カメラのオファー処理に失敗しました。カメラを削除して再度追加してください。
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+const MonitorItem = React.memo(({ 
+  mon, 
+  monitorSourceMap, 
+  expandedMonitorJson, 
+  currentMonitorIdForOffer, 
+  currentMonitorIdForAnswer, 
+  answerFromMonitorInput, 
+  monitorAnswerFile, 
+  cameras,
+  onSwitchCamera, 
+  onPrepareOffer, 
+  onToggleExpand, 
+  onRemoveMonitor, 
+  onAnswerInputChange, 
+  onAnswerFileChange, 
+  onAcceptAnswer, 
+  copyToClipboard, 
+  getCameraById 
+}) => {
+  const currentCameraId = monitorSourceMap[mon.id];
+  const isConnected = mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected');
+  const isProcessingAnswer = currentMonitorIdForAnswer === mon.id && (!!answerFromMonitorInput || !!monitorAnswerFile);
+
+  return (
+    <div key={mon.id} className="device-list-item">
+      <div className="device-header">
+        <span className="device-name">{mon.name}</span>
+        <span className="status-badge" data-status={mon.status}>{mon.status}</span>
+      </div>
+      <div className="small-id">ID: {mon.id}</div>
+
+      {isConnected && (
+        <div className="expanded-content">
+          <label htmlFor={`camera-select-${mon.id}`} className="label">カメラを選択:</label>
+          <select
+            id={`camera-select-${mon.id}`}
+            value={currentCameraId || ''}
+            onChange={(e) => onSwitchCamera(mon.id, e.target.value || null)}
+            className="camera-source-select button"
+          >
+            <option value="">信号なし</option>
+            {cameras
+              .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
+              .map(cam => (
+                <option key={cam.id} value={cam.id}>
+                  {cam.name} {cam.status === 'connected_streaming' ? '(ストリーミング中)' : '(接続済み)'}
+                </option>
+              ))
+            }
+          </select>
+        </div>
+      )}
+
+      <div className="button-group">
+        <button
+          onClick={() => onPrepareOffer(mon.id)}
+          disabled={mon.status === 'connected_to_controller' || mon.status?.includes('error')}
+          className={`button ${mon.status === 'connected_to_controller' || mon.status?.includes('error') ? 'button-disabled' : ''}`}
+        >
+          {mon.status === 'connected_to_controller' ? '接続済み' : 'オファーを準備'}
+        </button>
+        <button
+          onClick={() => onToggleExpand(mon.id)}
+          className="button"
+        >
+          {expandedMonitorJson === mon.id ? '詳細を隠す' : '詳細を表示'}
+        </button>
+        <button
+          onClick={() => onRemoveMonitor(mon.id)}
+          className="button button-danger"
+        >
+          モニターを削除
+        </button>
+      </div>
+      
+      {expandedMonitorJson === mon.id && (
+        <div className="expanded-content">
+          {mon.offerJsonFromController && (
+            <div>
+              <label htmlFor={`monOffer-${mon.id}`} className="label">
+                {mon.name}へのオファー: {currentCameraId ? `(${getCameraById(currentCameraId)?.name || '選択されたカメラ'}から)` : '(信号なし)'}
+              </label>
+              <textarea
+                id={`monOffer-${mon.id}`}
+                readOnly
+                value={mon.offerJsonFromController}
+                className="textarea"
+              />
+              <button
+                onClick={() => copyToClipboard(mon.offerJsonFromController, "Offer for Monitor")}
+                className="button"
+              >
+                オファーをコピー
+              </button>
+            </div>
+          )}
+          {mon.status !== 'connected_to_controller' && mon.offerJsonFromController && (
+            <div>
+              <label htmlFor={`monAnswer-${mon.id}`} className="label">{mon.name}からの応答を貼り付け:</label>
+              <textarea
+                id={`monAnswer-${mon.id}`}
+                placeholder={`${mon.name}からの応答を貼り付け`}
+                value={currentMonitorIdForAnswer === mon.id ? answerFromMonitorInput : ''}
+                onChange={e => onAnswerInputChange(mon.id, e.target.value)}
+                className="textarea"
+                disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
+              />
+              <div className="file-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
+                <label htmlFor={`monitorAnswerFileInput-${mon.id}`} className="label">または応答ファイルをアップロード:</label>
+                <input 
+                  id={`monitorAnswerFileInput-${mon.id}`}
+                  type="file" 
+                  accept=".json"
+                  onChange={(e) => onAnswerFileChange(mon.id, e.target.files[0])}
+                  className="input"
+                  disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
+                />
+              </div>
+              <button
+                onClick={() => onAcceptAnswer(mon.id)}
+                disabled={!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController) }
+                className={`button ${(!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController)) ? 'button-disabled' : ''}`}
+              >
+                応答を処理
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 function ControllerScreen() {
   const {
     cameras, monitors,
@@ -545,7 +741,7 @@ function ControllerScreen() {
 
   const selectedCameraStream = selectedCameraId ? cameraStreamRefs.current[selectedCameraId] : null;
 
-  const copyToClipboard = (text, type) => {
+  const copyToClipboardWrapper = useCallback((text, type) => {
     if (!text) {
       setError("No " + type + " text to copy.");
       return;
@@ -558,7 +754,7 @@ function ControllerScreen() {
       .catch(err => {
         setError("Failed to copy " + type + ": " + err.message);
       });
-  };
+  }, [setError, setStatus]);
 
   const handleRemoveCamera = useCallback(async (cameraId) => {
     const camera = getCameraById(cameraId);
@@ -603,65 +799,38 @@ function ControllerScreen() {
     setStatus(`Monitor ${monitor.name} has been removed.`);
   }, [getMonitorById, removeMonitor]);
 
+  const onToggleExpandCamera = useCallback((id) => {
+    setExpandedCameraJson(prev => (prev === id ? null : id));
+  }, []);
+
+  const onToggleExpandMonitor = useCallback((id) => {
+    setExpandedMonitorJson(prev => (prev === id ? null : id));
+  }, []);
+
+  const handleMonitorAnswerInputChange = useCallback((id, value) => {
+    setCurrentMonitorIdForAnswer(id);
+    setAnswerFromMonitorInput(value);
+    setMonitorAnswerFile(null);
+  }, [setCurrentMonitorIdForAnswer, setAnswerFromMonitorInput, setMonitorAnswerFile]);
+
+  const handleMonitorAnswerFileChange = useCallback((id, file) => {
+    setCurrentMonitorIdForAnswer(id);
+    setMonitorAnswerFile(file);
+    setAnswerFromMonitorInput('');
+  }, [setCurrentMonitorIdForAnswer, setMonitorAnswerFile, setAnswerFromMonitorInput]);
+
   const renderCameraItem = (cam) => (
-    <div key={cam.id} className={`device-list-item ${selectedCameraId === cam.id ? 'selected-device' : ''}`}>
-      <div className="device-header">
-        <span className="device-name">{cam.name}</span>
-        <span className="status-badge" data-status={cam.status}>{cam.status}</span>
-      </div>
-      <div className="small-id">ID: {cam.id}</div>
-      <div className="button-group">
-        <button 
-          onClick={() => selectCamera(cam.id)} 
-          disabled={selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected')}
-          className={`button ${selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected') ? 'button-disabled' : ''}`}
-        >
-          {selectedCameraId === cam.id ? '現在のソース' :
-            (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'ソースとして選択' :
-              (cam.status === 'track_received_no_stream' ? 'ストリーム問題' : '未ストリーミング')
-           )}
-        </button>
-        {(cam.answerJson || cam.status === 'error_offer_processing') && (
-        <button
-          onClick={() => setExpandedCameraJson(expandedCameraJson === cam.id ? null : cam.id)}
-          className="button"
-        >
-            {expandedCameraJson === cam.id ? '応答を隠す' : '応答を表示'}
-          </button>
-        )}
-        <button
-          onClick={() => handleRemoveCamera(cam.id)}
-          className="button button-danger"
-        >
-          カメラを削除
-        </button>
-      </div>
-      {expandedCameraJson === cam.id && (
-        <div className="expanded-content">
-          {cam.answerJson ? (
-            <>
-              <label htmlFor={`camAnswer-${cam.id}`} className="label">{cam.name}の応答:</label>
-          <textarea
-            id={`camAnswer-${cam.id}`}
-            readOnly
-            value={cam.answerJson}
-            className="textarea"
-          />
-          <button
-            onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
-            className="button"
-          >
-                応答をコピー
-          </button>
-            </>
-          ) : cam.status === 'error_offer_processing' && (
-            <div className="error-message">
-              カメラのオファー処理に失敗しました。カメラを削除して再度追加してください。
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <CameraItem 
+      key={cam.id} 
+      cam={cam} 
+      selectedCameraId={selectedCameraId} 
+      onSelectCamera={selectCamera} 
+      onToggleExpand={onToggleExpandCamera} 
+      onRemoveCamera={handleRemoveCamera} 
+      expandedCameraJson={expandedCameraJson}
+      copyToClipboard={copyToClipboardWrapper}
+      getCameraById={getCameraById}
+    />
   );
 
   const renderMonitorItem = (mon) => {
@@ -708,7 +877,7 @@ function ControllerScreen() {
             {mon.status === 'connected_to_controller' ? '接続済み' : 'オファーを準備'}
           </button>
           <button
-            onClick={() => setExpandedMonitorJson(expandedMonitorJson === mon.id ? null : mon.id)}
+            onClick={() => onToggleExpandMonitor(expandedMonitorJson === mon.id ? null : mon.id)}
             className="button"
           >
             {expandedMonitorJson === mon.id ? '詳細を隠す' : '詳細を表示'}
@@ -735,7 +904,7 @@ function ControllerScreen() {
                   className="textarea"
                 />
                 <button
-                  onClick={() => copyToClipboard(mon.offerJsonFromController, "Offer for Monitor")}
+                  onClick={() => copyToClipboardWrapper(mon.offerJsonFromController, "Offer for Monitor")}
                   className="button"
                 >
                   オファーをコピー
@@ -749,7 +918,7 @@ function ControllerScreen() {
                   id={`monAnswer-${mon.id}`}
                   placeholder={`${mon.name}からの応答を貼り付け`}
                   value={currentMonitorIdForAnswer === mon.id ? answerFromMonitorInput : ''}
-                  onChange={e => { setCurrentMonitorIdForAnswer(mon.id); setAnswerFromMonitorInput(e.target.value); }}
+                  onChange={e => handleMonitorAnswerInputChange(mon.id, e.target.value)}
                   className="textarea"
                   disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
                 />
@@ -759,11 +928,7 @@ function ControllerScreen() {
                     id={`monitorAnswerFileInput-${mon.id}`}
                     type="file" 
                     accept=".json"
-                    onChange={(e) => { 
-                      setMonitorAnswerFile(e.target.files[0]); 
-                      setCurrentMonitorIdForAnswer(mon.id); // Ensure this monitor is targeted for file upload
-                      setAnswerFromMonitorInput(''); // Clear textarea if file is chosen
-                    }}
+                    onChange={(e) => handleMonitorAnswerFileChange(mon.id, e.target.files[0])}
                     className="input"
                     disabled={currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController}
                   />
@@ -786,7 +951,8 @@ function ControllerScreen() {
   return (
     <div className="page-container">
       <header className="header">
-        <h1 className="title">コントローラー</h1>
+        <h1 className="title">Synva Cast</h1>
+        <span className="header-role">Controller</span>
         <p className="status">状態: {status}</p>
         {error && <p className="error">エラー: {error}</p>}
       </header>
@@ -934,7 +1100,28 @@ function ControllerScreen() {
             </section>
             <section className="card">
               <h3 className="title title-subsection">登録済みモニター ({monitors.length})</h3>
-              {monitors.length === 0 ? <p>モニターが登録されていません。</p> : monitors.map(renderMonitorItem)}
+              {monitors.length === 0 ? <p>モニターが登録されていません。</p> : monitors.map(mon => (
+                <MonitorItem
+                  key={mon.id}
+                  mon={mon}
+                  monitorSourceMap={monitorSourceMap}
+                  expandedMonitorJson={expandedMonitorJson}
+                  currentMonitorIdForOffer={currentMonitorIdForOffer}
+                  currentMonitorIdForAnswer={currentMonitorIdForAnswer}
+                  answerFromMonitorInput={answerFromMonitorInput}
+                  monitorAnswerFile={monitorAnswerFile}
+                  cameras={cameras}
+                  onSwitchCamera={switchMonitorCamera}
+                  onPrepareOffer={handlePrepareOfferForMonitor}
+                  onToggleExpand={onToggleExpandMonitor}
+                  onRemoveMonitor={handleRemoveMonitor}
+                  onAnswerInputChange={handleMonitorAnswerInputChange}
+                  onAnswerFileChange={handleMonitorAnswerFileChange}
+                  onAcceptAnswer={handleAcceptAnswerFromMonitor}
+                  copyToClipboard={copyToClipboardWrapper}
+                  getCameraById={getCameraById}
+                />
+              ))}
             </section>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 const CAM_LOG_PREFIX = "[CamScreen]";
 
@@ -20,18 +20,27 @@ const commonStyles = {
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
     width: '100vw',
     boxSizing: 'border-box',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   mainContentArea: {
     display: 'flex',
     flexDirection: 'column',
     gap: '20px',
     padding: '20px',
-    flex: 1
+    flex: 1,
+    alignItems: 'center',
   },
   title: {
-    margin: '0 0 10px 0',
+    margin: '0',
     color: '#333',
     fontSize: '1.8em'
+  },
+  headerRole: {
+    fontSize: '1.2em',
+    fontWeight: 'bold',
+    color: '#555'
   },
   status: {
     marginBottom: '5px',
@@ -135,7 +144,7 @@ function CameraScreen() {
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
         setAvailableVideoDevices(videoDevices);
         if (videoDevices.length > 0 && !selectedDeviceId) {
-          // setSelectedDeviceId(videoDevices[0].deviceId); // Optionally auto-select first device
+          setSelectedDeviceId(videoDevices[0].deviceId);
         }
       } catch (err) {
         console.warn(CAM_LOG_PREFIX + " Error enumerating devices: " + err.message);
@@ -379,7 +388,7 @@ function CameraScreen() {
     }
   }, [pcRef.current]);
 
-  const fallbackCopyToClipboard = (text, type) => {
+  const fallbackCopyToClipboard = useCallback((text, type) => {
     if (offerSignalTextareaRef.current) {
       offerSignalTextareaRef.current.select();
       document.execCommand('copy');
@@ -388,9 +397,9 @@ function CameraScreen() {
     } else {
       setError("フォールバックコピーのためのテキストエリアが利用できません。");
     }
-  };
+  }, [offerSignalTextareaRef, setStatus, setError]);
 
-  const copyToClipboard = (textToCopy, type) => {
+  const copyToClipboard = useCallback((textToCopy, type) => {
     if (!textToCopy) {
       setError("コピーする" + type + "がありません。");
       return;
@@ -402,23 +411,24 @@ function CameraScreen() {
           setTimeout(() => setStatus(prev => prev === (type + 'をクリップボードにコピーしました！') ? ('カメラ: ' + type + ' 準備完了。') : prev), 2000);
         })
         .catch(err => {
-          setError(type + 'のコピーに失敗しました。手動でコピーしてください。');
+          setError(type + 'のコピーに失敗しました。手動でコピーしてください。 ' + err.message);
           fallbackCopyToClipboard(textToCopy, type);
-        });
+        })
     } else {
       fallbackCopyToClipboard(textToCopy, type);
     }
-  };
+  }, [fallbackCopyToClipboard, setError, setStatus]);
 
   return (
-    <div className="page-container">
-      <header className="header">
-        <h1 className="title">カメラ設定</h1>
-        <p className="status">カメラの状態: {status}</p>
-        {error && <p className="error">エラー: {error}</p>}
+    <div style={commonStyles.pageContainer}>
+      <header style={commonStyles.header}>
+        <h1 style={commonStyles.title}>Synva Cast</h1>
+        <span style={commonStyles.headerRole}>Camera</span>
+        <p style={commonStyles.status}>カメラの状態: {status}</p>
+        {error && <p style={commonStyles.error}>エラー: {error}</p>}
       </header>
 
-      <div className="main-content-area">
+      <div style={commonStyles.mainContentArea}>
         <section className="card">
           <h2 className="title title-section">カメラの設定</h2>
           <div className="device-selection">

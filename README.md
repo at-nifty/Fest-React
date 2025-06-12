@@ -1,363 +1,108 @@
-# Fest-React ビデオストリーミング制御システム
+# Synva Cast
 
-WebRTCを使用したブラウザベースのビデオストリーミング制御システムです。カメラ映像や画面共有を通じて、P2P接続でリアルタイムな映像配信を実現します。
+A localized, browser-based live production tool inspired by the core concepts of the Blackmagic ATEM Mini ecosystem. This project provides a simple way to switch between multiple camera sources (from other browser tabs/devices) and broadcast them to monitor outputs (also other browser tabs/devices), all coordinated through a central controller interface.
 
-## システム概要
+## Core Features
 
-### アーキテクチャ
-- クライアントサイドのみで動作（サーバー不要）
-- WebRTCによるP2P接続
-- React Single Page Application (SPA)
-- ブラウザネイティブAPIの活用
+- **Controller**: Manages all connections. Adds cameras and monitors, and routes camera feeds to monitors.
+- **Camera**: Captures media (webcam, screen share) and sends it to the Controller.
+- **Monitor**: Receives a media stream from the Controller.
 
-### 主要コンポーネント
-1. **映像ソース管理**
-   - MediaDevices API による映像デバイスの制御
-   - Screen Capture API による画面共有の実装
-   - WebRTC MediaStream の管理
+## How It Works
 
-2. **接続管理**
-   - ICE (Interactive Connectivity Establishment) による接続確立
-   - STUN/TURN サーバー設定（オプション）
-   - シグナリング（手動JSONコピー方式）
+The system uses WebRTC for peer-to-peer media streaming. The connection process is facilitated by manual copy-pasting of Session Description Protocol (SDP) "offers" and "answers" between the components.
 
-3. **ユーザーインターフェース**
-   - React コンポーネントベースの画面構成
-   - リアルタイムな状態表示
-   - レスポンシブデザイン
+1.  A **Camera** instance generates an "offer" signal.
+2.  This offer is pasted into the **Controller**.
+3.  The Controller processes it and generates an "answer".
+4.  The answer is pasted back into the Camera, establishing the Camera-Controller connection.
+5.  The **Controller** can then generate an "offer" for a **Monitor**.
+6.  This offer is pasted into the Monitor.
+7.  The Monitor generates an "answer", which is pasted back into the Controller, establishing the Controller-Monitor connection.
+8.  The Controller can now route any connected Camera's stream to any connected Monitor.
 
-## 機能詳細
+## Project Structure
 
-### 映像ソース
-#### カメラ映像の配信
-- デバイス選択
-  - 利用可能なビデオデバイスの自動検出
-  - デバイスの動的切り替え
-  - デバイス権限の自動要求
-- プレビュー表示
-  - リアルタイムプレビュー
-  - ミュート制御
-  - 映像サイズの自動調整
+- `src/screens/`: Contains the main React components for each role (Controller, Monitor, Camera, RoleSelection).
+- `src/store.js`: Zustand-based global state management for cameras, monitors, and connections.
+- `src/utils/`: Utility functions, including `connectionStorage.js` for saving/loading state to/from localStorage.
+- `public/`: Static assets.
 
-#### 画面共有
-- ブラウザウィンドウ
-  - 特定のタブまたはウィンドウの選択
-  - 全画面キャプチャ対応
-- システム音声
-  - システムオーディオのキャプチャ
-  - 音声ミュート制御
-- 画面切り替え
-  - 共有画面の動的切り替え
-  - 自動再接続対応
+## Getting Started
 
-### 接続制御
-#### P2P接続（WebRTC）
-- シグナリング
-  ```javascript
-  // オファー側のSDPフォーマット
-  {
-    type: 'camera_offer',
-    name: 'カメラ名',
-    sdp: {
-      type: 'offer',
-      sdp: '...'
-    },
-    iceCandidates: [...]
-  }
+### Prerequisites
 
-  // アンサー側のSDPフォーマット
-  {
-    type: 'monitor_answer',
-    name: 'モニター名',
-    sdp: {
-      type: 'answer',
-      sdp: '...'
-    },
-    iceCandidates: [...]
-  }
-  ```
+- Node.js (v18.x recommended)
+- npm (usually comes with Node.js)
 
-- ICE接続状態
-  - `new`
-  - `checking`
-  - `connected`
-  - `completed`
-  - `failed`
-  - `disconnected`
-  - `closed`
+### Installation & Running
 
-#### エラーハンドリング
-- デバイスエラー
-  - 権限拒否
-  - デバイス未検出
-  - デバイス切断
-- 接続エラー
-  - ICE接続失敗
-  - シグナリングエラー
-  - メディアストリームエラー
+1.  Clone the repository.
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Run the development server:
+    ```bash
+    npm run dev
+    ```
+4.  Open your browser and navigate to `http://localhost:5173`.
+    - You will see the role selection screen. Open at least three tabs: one for a Controller, one for a Camera, and one for a Monitor to test the full workflow.
 
-### UI/UX詳細
-- 日本語インターフェース
-  - 直感的な操作フロー
-  - エラーメッセージの日本語化
-  - ツールチップによるガイド
-- 接続状態表示
-  - リアルタイムステータス更新
-  - 接続品質インジケータ
-  - エラー状態の視覚化
-- レスポンシブ対応
-  - モバイル対応レイアウト
-  - 画面サイズに応じた表示調整
-  - タッチ操作対応
+## Detailed Workflow
 
-## 画面構成詳細
+### 1. Start the Controller
 
-### カメラ画面 (`CameraScreen`)
-```jsx
-<div className="page-container">
-  <header>
-    <h1>カメラ設定</h1>
-    <StatusDisplay />
-  </header>
-  
-  <main>
-    <DeviceSelector />
-    <VideoPreview />
-    <ConnectionControls />
-  </main>
-</div>
-```
+- Open a new tab and select the **Controller** role. This will be your main control panel.
 
-### モニター画面 (`MonitorScreen`)
-```jsx
-<div className="page-container">
-  <header>
-    <h1>モニター設定</h1>
-    <StatusDisplay />
-  </header>
-  
-  <main>
-    <VideoDisplay fullscreenEnabled />
-    <ConnectionControls />
-  </main>
-</div>
-```
+### 2. Connect a Camera
 
-### コントローラー画面 (`ControllerScreen`)
-```jsx
-<div className="page-container">
-  <header>
-    <h1>接続管理</h1>
-    <StatusDisplay />
-  </header>
-  
-  <main>
-    <DeviceList />
-    <ConnectionManager />
-  </main>
-</div>
-```
+1.  Open another tab/device and select the **Camera** role.
+2.  Give the camera a name (e.g., "Main Cam").
+3.  Click "Start Camera" to get your video feed.
+4.  Click "Create Offer". An "offer" JSON will be generated in the textarea and automatically downloaded as a `.json` file.
+5.  In the **Controller** tab, upload the `camera_offer_...json` file or paste the JSON text into the "New Camera Offer" area.
+6.  Click "Process Camera Offer". The Controller will generate an "answer" JSON and automatically download it as a `.json` file.
+7.  Go back to the **Camera** tab. Upload the `controller_answer_...json` file or paste the answer into the "Answer from Controller" area.
+8.  Click "Process Answer". The connection state should change to "Connected". The camera feed is now being sent to the Controller.
 
-## 技術仕様
+### 3. Connect a Monitor
 
-### 使用技術
-- **React**: ^18.2.0
-  - Hooks による状態管理
-  - カスタムフック実装
-  - エラーバウンダリ
-- **WebRTC**
-  - RTCPeerConnection
-  - MediaStream API
-  - ICE Framework
-- **Screen Capture API**
-  - getDisplayMedia()
-  - 画面共有制御
-- **MediaDevices API**
-  - getUserMedia()
-  - デバイス列挙
-  - メディアストリーム制御
+1.  Open a third tab/device and select the **Monitor** role.
+2.  Give the monitor a name (e.g., "Main Output").
+3.  In the **Controller** tab, under the "Monitors" section, click "Add New Monitor Placeholder".
+4.  Click "Prepare Offer" for the new monitor. An "offer" JSON for the monitor will be generated and automatically downloaded.
+5.  In the **Monitor** tab, upload the `controller_offer_...json` file or paste the offer into the "Offer from Controller" area.
+6.  Click "Process Offer". The Monitor will generate an "answer" JSON and download it.
+7.  Go back to the **Controller** tab. Find the corresponding monitor, upload the `monitor_answer_...json` file, and click "Process Answer".
+8.  The monitor is now connected to the Controller.
 
-### WebRTC実装詳細
-#### ICE接続
-- STUN/TURNサーバー設定
-  ```javascript
-  const configuration = {
-    iceServers: [
-      {
-        urls: 'stun:stun.l.google.com:19302'
-      }
-    ],
-    iceTransportPolicy: 'all'
-  };
-  ```
+### 4. Switching Sources
 
-#### P2Pメディアストリーミング
-- ビデオコーデック設定
-- 帯域制御
-- 品質パラメータ
+- In the **Controller** interface, for each connected monitor, you will see a dropdown menu.
+- This dropdown lists all connected and streaming cameras.
+- Select a camera from the dropdown to instantly switch the video feed being sent to that monitor.
+- You can select "No Signal" to send a black screen.
 
-#### シグナリング
-- 手動JSONコピー方式
-- エラー検出と再試行
-- 状態遷移管理
+## State Persistence
 
-### 画面共有API詳細
-```javascript
-const displayMediaOptions = {
-  video: {
-    displaySurface: "browser",  // ブラウザウィンドウの共有
-    logicalSurface: true,      // 論理サーフェスの使用
-    cursor: "always"           // カーソルを常に表示
-  },
-  audio: {
-    suppressLocalAudioPlayback: false  // ローカルオーディオ再生を許可
-  },
-  selfBrowserSurface: "exclude",      // 自身のブラウザ画面を除外
-  systemAudio: "include",             // システム音声を含める
-  surfaceSwitching: "include",        // 画面切り替えを許可
-  monitorTypeSurfaces: "include"      // モニタータイプのサーフェスを含める
-};
-```
+The application state (list of cameras, monitors, and their connections) is automatically saved to your browser's `localStorage`. When you reload the Controller page, it will attempt to restore the previous setup. However, the actual WebRTC peer connections will need to be re-established manually following the same offer/answer process.
 
-## セットアップ
+## Known Issues & Limitations
 
-### 開発環境要件
-- Node.js >= 16.0.0
-- npm >= 8.0.0
-- モダンブラウザ（Chrome推奨）
+- **Manual Signaling**: The core limitation is the manual copy-paste of SDP signals. A future version could implement a signaling server (e.g., using WebSockets) to automate this.
+- **No Connection Re-establishment**: Reloading a Camera or Monitor page breaks the connection, requiring it to be removed from the Controller and re-added.
+- **Scalability**: Performance may degrade with a very large number of simultaneous connections, depending on the client machine's resources.
+- **Network Dependency**: All peers (tabs/devices) must be on the same local network for the ICE candidates to resolve correctly without a TURN server.
 
-### インストール手順
-1. リポジトリのクローン
-```bash
-git clone https://github.com/yourusername/Fest-React.git
-cd Fest-React
-```
+## Future Development Ideas
 
-2. 依存関係のインストール
-```bash
-npm install
-```
+- **Signaling Server**: Implement a WebSocket-based signaling server to automate the offer/answer exchange.
+- **UI/UX Enhancements**: Improve the user interface with better visual feedback, drag-and-drop layouts, and more intuitive controls.
+- **Multi-view Previews**: Show small, real-time previews of all camera sources directly in the Controller UI.
+- **Transitions**: Add simple video transitions (e.g., cuts, fades) when switching between camera sources.
+- **TURN Server Integration**: Add configuration for a TURN server to allow connections between peers on different networks.
+- **Recording**: Add functionality to record the output stream of a monitor.
+- **Audio Mixing**: Basic audio mixing capabilities.
 
-3. 開発サーバーの起動
-```bash
-npm start
-```
-
-4. ビルド（本番環境用）
-```bash
-npm run build
-```
-
-### 環境設定
-- 開発環境: `http://localhost:3000`
-- 本番環境: HTTPS必須
-
-## 使用方法
-
-### カメラ/画面共有の開始
-1. カメラ画面を開く
-   - URLパス: `/camera`
-   - 必要な権限を許可
-
-2. 映像ソースの選択
-   - カメラモード
-     - 利用可能なカメラデバイスから選択
-     - プレビューで映像を確認
-   - 画面共有モード
-     - 共有する画面/ウィンドウを選択
-     - システム音声の共有を設定
-
-3. 接続の開始
-   - 「メディアを開始」で映像取得開始
-   - 「オファーを作成」でP2P接続開始
-   - 生成されたJSONをコピー
-
-### モニターでの受信
-1. モニター画面を開く
-   - URLパス: `/monitor`
-   - モニター名を設定（任意）
-
-2. 接続処理
-   - カメラからのJSONを貼り付け
-   - 「オファーを処理」をクリック
-   - 生成された応答JSONをコピー
-
-3. 表示設定
-   - フルスクリーンモードの切り替え
-   - 音量調整
-   - 表示サイズの調整
-
-### 接続の確立と管理
-1. P2P接続の確立
-   - カメラ側で応答JSONを処理
-   - ICE接続の確立を待機
-   - 接続状態の確認
-
-2. 接続の維持
-   - 接続状態のモニタリング
-   - エラー発生時の再接続
-   - 映像ソースの動的切り替え
-
-3. 接続の終了
-   - 「接続を終了」で正常切断
-   - リソースの解放確認
-   - 状態のリセット
-
-## トラブルシューティング
-
-### よくある問題と解決方法
-1. カメラにアクセスできない
-   - ブラウザの権限設定を確認
-   - デバイスドライバーの更新
-   - 他のアプリケーションによる使用確認
-
-2. 画面共有が開始できない
-   - ブラウザの権限設定を確認
-   - HTTPSまたはlocalhostであることを確認
-   - 特定のウィンドウのみを共有
-
-3. 接続が確立できない
-   - JSONの正しいコピー/貼り付けを確認
-   - ネットワーク接続を確認
-   - ファイアウォール設定の確認
-
-### エラーメッセージ一覧
-- `NotAllowedError`: デバイスの使用権限が拒否された
-- `NotFoundError`: 指定されたデバイスが見つからない
-- `NotReadableError`: デバイスの使用中や異常
-- `OverconstrainedError`: 要求された設定が非対応
-
-## 注意事項
-
-### セキュリティ
-- HTTPS環境での実行推奨
-- デバイス権限の適切な管理
-- P2P接続のプライバシー考慮
-
-### ブラウザ対応
-- Chrome (推奨): 最新版
-- Firefox: 最新版
-- Safari: 最新版
-- Edge: 最新版
-
-### パフォーマンス考慮
-- ネットワーク帯域の確保
-- CPU/メモリ使用量の監視
-- 適切な画質設定の選択
-
-## 開発者向け情報
-
-### コード規約
-- ESLint設定に準拠
-- Prettierによるフォーマット
-- コンポーネント設計原則
-
-### テスト
-- Jest によるユニットテスト
-- React Testing Library
-- E2Eテスト（予定）
-
-### 今後の展開
-- サーバーサイドシグナリング
-- 録画機能
-- マルチストリーム対応
+This project, Synva Cast, serves as a foundation for a powerful, flexible, and open-source live production tool.
