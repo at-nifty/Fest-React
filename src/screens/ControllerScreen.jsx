@@ -1085,7 +1085,6 @@ function ControllerScreen() {
           {previewTab === 'cameras' && (
             <div className="preview-grid">
               {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').map(cam => {
-                const stream = cameraStreamRefs.current[cam.id];
                 return (
                   <div 
                     key={cam.id} 
@@ -1095,11 +1094,15 @@ function ControllerScreen() {
                   >
                     <div className="video-container">
                       <video
+                        ref={videoEl => {
+                          if (videoEl && cameraStreamRefs.current[cam.id]) {
+                            videoEl.srcObject = cameraStreamRefs.current[cam.id];
+                          }
+                        }}
                         autoPlay
                         playsInline
                         muted
                         className="video"
-                        srcObject={stream}
                       />
                       <div className="video-title">{cam.name}</div>
                     </div>
