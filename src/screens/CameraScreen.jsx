@@ -115,6 +115,15 @@ const commonStyles = {
   }
 };
 
+const readFileAsText = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file, 'UTF-8');
+  });
+};
+
 function CameraScreen() {
   console.log(CAM_LOG_PREFIX + " Component RENDERED");
   const [localStream, setLocalStream] = useState(null);
@@ -308,7 +317,7 @@ function CameraScreen() {
         setStatus('カメラ: オファーが作成され、ファイルとしてダウンロードされました。');
 
         // Download offer JSON file
-        const blob = new Blob([offerJsonString], { type: 'application/json' });
+        const blob = new Blob(['\uFEFF' + offerJsonString], { type: 'application/json;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -369,7 +378,7 @@ function CameraScreen() {
 
     if (controllerAnswerFile) {
       try {
-        answerInputToProcess = await controllerAnswerFile.text();
+        answerInputToProcess = await readFileAsText(controllerAnswerFile);
         console.log(CAM_LOG_PREFIX + " Read answer from file:", answerInputToProcess.substring(0, 150) + "...");
         setControllerAnswerFile(null); // Reset file input
         const answerFileNameInput = document.getElementById('controllerAnswerFileInput');

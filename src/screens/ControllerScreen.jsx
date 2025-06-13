@@ -201,6 +201,15 @@ const MonitorItem = React.memo(({
   );
 });
 
+const readFileAsText = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file, 'UTF-8'); // Specify UTF-8 encoding
+  });
+};
+
 function ControllerScreen() {
   const {
     cameras, monitors,
@@ -232,7 +241,7 @@ function ControllerScreen() {
 
   const [previewTab, setPreviewTab] = useState('cameras'); // 'cameras' or 'monitors'
 
-  const createEmptyMediaStream = () => {
+  const createEmptyMediaStream = useCallback(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
     canvas.height = 480;
@@ -257,7 +266,7 @@ function ControllerScreen() {
     audioTrack.enabled = false; // Mute the audio track
 
     return new MediaStream([videoTrack, audioTrack]);
-  };
+  }, []);
 
   const switchMonitorCamera = useCallback(async (monitorId, cameraId) => {
     console.log(CTRL_LOG_PREFIX + ` Switching monitor ${monitorId} to camera ${cameraId || 'No Signal'}`);
@@ -400,7 +409,7 @@ function ControllerScreen() {
 
     if (cameraOfferFile) {
       try {
-        offerInputToProcess = await cameraOfferFile.text();
+        offerInputToProcess = await readFileAsText(cameraOfferFile);
         console.log(CTRL_LOG_PREFIX + " Read offer from file:", offerInputToProcess.substring(0, 150) + "...");
         setCameraOfferFile(null); // Reset file input
         const offerFileNameInput = document.getElementById('cameraOfferFileInput');
@@ -479,7 +488,7 @@ function ControllerScreen() {
           setStatus("Answer generated and downloaded for camera " + (getCameraById(newCamId)?.name || newCamId));
 
           // Download answer JSON file
-          const blob = new Blob([answerJsonString], { type: 'application/json' });
+          const blob = new Blob(['\uFEFF' + answerJsonString], { type: 'application/json;charset=utf-8' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
@@ -493,13 +502,20 @@ function ControllerScreen() {
 
       pc.ontrack = event => {
         console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Received track: kind=${event.track.kind}, id=${event.track.id}, stream_id=${event.streams[0]?.id}`);
+        
+        let stream = cameraStreamRefs.current[newCamId];
+        if (!stream) {
+            stream = new MediaStream();
+            cameraStreamRefs.current[newCamId] = stream;
+        }
+        stream.addTrack(event.track);
+
+        // Update status etc. when we get a video track
         if (event.track.kind === 'video') {
-          const stream = new MediaStream([event.track]);
-          cameraStreamRefs.current[newCamId] = stream;
-          updateCameraStatus(newCamId, 'connected_streaming');
-          setStatus("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connected and streaming.");
-          // 接続成功時に接続情報を隠す
-          setExpandedCameraJson(null);
+            updateCameraStatus(newCamId, 'connected_streaming');
+            setStatus("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connected and streaming.");
+            // 接続成功時に接続情報を隠す
+            setExpandedCameraJson(null);
         }
       };
 
@@ -627,6 +643,17 @@ function ControllerScreen() {
           console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Offer created and stored:`, { sdp: offerSdp, ice: collectedIceCandidates });
           updateMonitorStatus(monitorId, 'offer_ready_for_monitor');
           setStatus("Offer for " + monitor.name + " ready and downloaded.");
+          
+          // Download offer JSON file for monitor
+          const blob = new Blob(['\uFEFF' + offerForMonitorJson], { type: 'application/json;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `controller_offer_for_${monitor.name}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
         }
       };
 
@@ -664,7 +691,7 @@ function ControllerScreen() {
 
     if (monitorAnswerFile && currentMonitorIdForAnswer === monitorId) {
       try {
-        const fileContent = await monitorAnswerFile.text();
+        const fileContent = await readFileAsText(monitorAnswerFile);
         setMonitorAnswerFile(null); // Reset file input state first
         const answerFileNameInput = document.getElementById(`monitorAnswerFileInput-${monitorId}`);
         if (answerFileNameInput) answerFileNameInput.value = '';

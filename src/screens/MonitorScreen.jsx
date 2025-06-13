@@ -133,6 +133,15 @@ const commonStyles = {
   }
 };
 
+const readFileAsText = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file, 'UTF-8');
+  });
+};
+
 function MonitorScreen() {
   console.log(MON_LOG_PREFIX + " Component RENDERED");
   const [controllerOfferJsonInput, setControllerOfferJsonInput] = useState('');
@@ -193,7 +202,7 @@ function MonitorScreen() {
 
     if (controllerOfferFile) {
       try {
-        offerInputToProcess = await controllerOfferFile.text();
+        offerInputToProcess = await readFileAsText(controllerOfferFile);
         console.log(MON_LOG_PREFIX + " Read offer from file:", offerInputToProcess.substring(0, 150) + "...");
         setControllerOfferFile(null); // Reset file input
         const offerFileNameInput = document.getElementById('controllerOfferFileInput');
@@ -273,7 +282,7 @@ function MonitorScreen() {
           setStatus('Monitor: Answer created and downloaded.');
 
           // Download answer JSON file
-          const blob = new Blob([answerJsonString], { type: 'application/json' });
+          const blob = new Blob(['\uFEFF' + answerJsonString], { type: 'application/json;charset=utf-8' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
