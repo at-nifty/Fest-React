@@ -14,21 +14,21 @@ const CameraItem = React.memo(({ cam, selectedCameraId, onSelectCamera, onToggle
       </div>
       <div className="small-id">ID: {cam.id}</div>
       <div className="button-group">
-        <button 
-          onClick={() => onSelectCamera(cam.id)} 
+        <button
+          onClick={() => onSelectCamera(cam.id)}
           disabled={selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected')}
           className={`button ${selectedCameraId === cam.id || (cam.status !== 'connected_streaming' && cam.status !== 'pc_state_connected') ? 'button-disabled' : ''}`}
         >
           {selectedCameraId === cam.id ? '現在のソース' :
             (cam.status === 'connected_streaming' || cam.status === 'pc_state_connected' ? 'ソースとして選択' :
               (cam.status === 'track_received_no_stream' ? 'ストリーム問題' : '未ストリーミング')
-           )}
+            )}
         </button>
         {(cam.answerJson || cam.status === 'error_offer_processing') && (
-        <button
-          onClick={() => onToggleExpand(cam.id)}
-          className="button"
-        >
+          <button
+            onClick={() => onToggleExpand(cam.id)}
+            className="button"
+          >
             {expandedCameraJson === cam.id ? '応答を隠す' : '応答を表示'}
           </button>
         )}
@@ -44,18 +44,18 @@ const CameraItem = React.memo(({ cam, selectedCameraId, onSelectCamera, onToggle
           {cam.answerJson ? (
             <>
               <label htmlFor={`camAnswer-${cam.id}`} className="label">{cam.name}の応答:</label>
-          <textarea
-            id={`camAnswer-${cam.id}`}
-            readOnly
-            value={cam.answerJson}
-            className="textarea"
-          />
-          <button
-            onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
-            className="button"
-          >
+              <textarea
+                id={`camAnswer-${cam.id}`}
+                readOnly
+                value={cam.answerJson}
+                className="textarea"
+              />
+              <button
+                onClick={() => copyToClipboard(cam.answerJson, "Camera Answer")}
+                className="button"
+              >
                 応答をコピー
-          </button>
+              </button>
             </>
           ) : cam.status === 'error_offer_processing' && (
             <div className="error-message">
@@ -68,24 +68,24 @@ const CameraItem = React.memo(({ cam, selectedCameraId, onSelectCamera, onToggle
   );
 });
 
-const MonitorItem = React.memo(({ 
-  mon, 
-  monitorSourceMap, 
-  expandedMonitorJson, 
-  currentMonitorIdForOffer, 
-  currentMonitorIdForAnswer, 
-  answerFromMonitorInput, 
-  monitorAnswerFile, 
+const MonitorItem = React.memo(({
+  mon,
+  monitorSourceMap,
+  expandedMonitorJson,
+  currentMonitorIdForOffer,
+  currentMonitorIdForAnswer,
+  answerFromMonitorInput,
+  monitorAnswerFile,
   cameras,
-  onSwitchCamera, 
-  onPrepareOffer, 
-  onToggleExpand, 
-  onRemoveMonitor, 
-  onAnswerInputChange, 
-  onAnswerFileChange, 
-  onAcceptAnswer, 
-  copyToClipboard, 
-  getCameraById 
+  onSwitchCamera,
+  onPrepareOffer,
+  onToggleExpand,
+  onRemoveMonitor,
+  onAnswerInputChange,
+  onAnswerFileChange,
+  onAcceptAnswer,
+  copyToClipboard,
+  getCameraById
 }) => {
   const currentCameraId = monitorSourceMap[mon.id];
   const isConnected = mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected');
@@ -142,7 +142,7 @@ const MonitorItem = React.memo(({
           モニターを削除
         </button>
       </div>
-      
+
       {expandedMonitorJson === mon.id && (
         <div className="expanded-content">
           {mon.offerJsonFromController && (
@@ -177,9 +177,9 @@ const MonitorItem = React.memo(({
               />
               <div className="file-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
                 <label htmlFor={`monitorAnswerFileInput-${mon.id}`} className="label">または応答ファイルをアップロード:</label>
-                <input 
+                <input
                   id={`monitorAnswerFileInput-${mon.id}`}
-                  type="file" 
+                  type="file"
                   accept=".json"
                   onChange={(e) => onAnswerFileChange(mon.id, e.target.files[0])}
                   className="input"
@@ -188,7 +188,7 @@ const MonitorItem = React.memo(({
               </div>
               <button
                 onClick={() => onAcceptAnswer(mon.id)}
-                disabled={!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController) }
+                disabled={!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController)}
                 className={`button ${(!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController)) ? 'button-disabled' : ''}`}
               >
                 応答を処理
@@ -206,7 +206,7 @@ function ControllerScreen() {
     cameras, monitors,
     addCamera, setCameraAnswer, updateCameraStatus, getCameraById,
     removeCamera, removeMonitor,
-    addMonitorPlaceholder, 
+    addMonitorPlaceholder,
     selectCamera, selectedCameraId, // Only used for preview now
     setOfferForMonitor, setMonitorAnswer, updateMonitorStatus, getMonitorById,
     initializeCameras, initializeMonitors, updateMonitorName // ストアに初期化関数があることを想定
@@ -216,7 +216,7 @@ function ControllerScreen() {
   const [expandedCameraJson, setExpandedCameraJson] = useState(null);
   const [expandedMonitorJson, setExpandedMonitorJson] = useState(null);
   const [monitorSourceMap, setMonitorSourceMap] = useState({});
-  
+
   const [currentMonitorIdForOffer, setCurrentMonitorIdForOffer] = useState(null);
   const [currentMonitorIdForAnswer, setCurrentMonitorIdForAnswer] = useState(null);
   const [answerFromMonitorInput, setAnswerFromMonitorInput] = useState('');
@@ -260,6 +260,7 @@ function ControllerScreen() {
   };
 
   const switchMonitorCamera = useCallback(async (monitorId, cameraId) => {
+    console.log(CTRL_LOG_PREFIX + ` Switching monitor ${monitorId} to camera ${cameraId || 'No Signal'}`);
     const monitor = getMonitorById(monitorId);
     if (!monitor) return;
 
@@ -270,29 +271,27 @@ function ControllerScreen() {
     }
 
     try {
-    const newStream = cameraId ? cameraStreamRefs.current[cameraId] : createEmptyMediaStream();
+      console.log(CTRL_LOG_PREFIX + `Switching: getting stream from camera ${cameraId}`);
+      const newStream = cameraId ? cameraStreamRefs.current[cameraId] : createEmptyMediaStream();
       if (!newStream) {
         console.error(CTRL_LOG_PREFIX + " Cannot switch camera: Stream not available", cameraId);
         return;
       }
 
       const tracks = newStream.getTracks();
-    const senders = pc.getSenders();
+      const senders = pc.getSenders();
 
       // Match tracks with senders by kind
       for (const track of tracks) {
         const sender = senders.find(s => s.track?.kind === track.kind);
         if (sender) {
+          console.log(CTRL_LOG_PREFIX + `Switching: Replacing track of kind ${track.kind} for monitor ${monitorId}`);
           await sender.replaceTrack(track);
           if (track.kind === 'audio') {
             track.enabled = false; // Keep audio track muted
+          }
         }
       }
-    }
-
-    setMonitorSourceMap(prev => ({ ...prev, [monitorId]: cameraId }));
-    setStatus(`Switched ${monitor.name} to ${cameraId ? getCameraById(cameraId)?.name || 'unknown camera' : 'No Signal'}`);
-      console.log(CTRL_LOG_PREFIX + ` Successfully switched ${monitor.name} to ${cameraId ? 'camera ' + cameraId : 'No Signal'}`);
     } catch (err) {
       console.error(CTRL_LOG_PREFIX + " Error switching camera for monitor " + monitorId, err);
       setError(`Failed to switch camera for ${monitor.name}: ${err.message}`);
@@ -301,6 +300,7 @@ function ControllerScreen() {
 
   useEffect(() => {
     return () => {
+      console.log(CTRL_LOG_PREFIX + " Unloading component, closing all peer connections.");
       Object.values(cameraPcRefs.current).forEach(pc => pc?.close());
       Object.values(monitorPcRefs.current).forEach(pc => pc?.close());
       cameraPcRefs.current = {};
@@ -321,7 +321,7 @@ function ControllerScreen() {
   // 初期化時に接続状態を復元
   useEffect(() => {
     const state = loadConnectionState();
-    
+
     // カメラとモニターの状態を復元
     if (state.cameras.length > 0) {
       initializeCameras(state.cameras);
@@ -329,7 +329,7 @@ function ControllerScreen() {
     if (state.monitors.length > 0) {
       initializeMonitors(state.monitors);
     }
-    
+
     // モニターとカメラの接続マップを復元
     setMonitorSourceMap(state.monitorSourceMap);
 
@@ -339,7 +339,7 @@ function ControllerScreen() {
         try {
           const pc = new RTCPeerConnection({});
           cameraPcRefs.current[cam.id] = pc;
-          
+
           // 接続の再確立処理
           if (cam.sdp) {
             await pc.setRemoteDescription(new RTCSessionDescription(cam.sdp));
@@ -362,7 +362,7 @@ function ControllerScreen() {
         try {
           const pc = new RTCPeerConnection({});
           monitorPcRefs.current[mon.id] = pc;
-          
+
           // 接続の再確立処理
           if (mon.sdp) {
             await pc.setRemoteDescription(new RTCSessionDescription(mon.sdp));
@@ -401,10 +401,12 @@ function ControllerScreen() {
     if (cameraOfferFile) {
       try {
         offerInputToProcess = await cameraOfferFile.text();
+        console.log(CTRL_LOG_PREFIX + " Read offer from file:", offerInputToProcess.substring(0, 150) + "...");
         setCameraOfferFile(null); // Reset file input
         const offerFileNameInput = document.getElementById('cameraOfferFileInput');
         if (offerFileNameInput) offerFileNameInput.value = ''; // Reset file input display
       } catch (e) {
+        console.error(CTRL_LOG_PREFIX + " Error reading camera offer file:", e);
         setError("Error reading camera offer file: " + e.message);
         setStatus("Failed to read camera offer file.");
         return;
@@ -415,21 +417,25 @@ function ControllerScreen() {
       setError("New Camera Offer input or file is empty.");
       return;
     }
-    
-    setStatus("Processing new camera offer...");
+
+    console.log(CTRL_LOG_PREFIX + " Processing new camera offer...");
     setError('');
     let parsedRawOffer;
     try {
       parsedRawOffer = JSON.parse(offerInputToProcess);
+      console.log(CTRL_LOG_PREFIX + " Parsed camera offer:", parsedRawOffer);
     } catch (e) {
+      console.error(CTRL_LOG_PREFIX + " Failed to parse camera offer JSON:", e);
       setError("Invalid JSON in Camera Offer: " + e.message);
       setStatus("Failed to parse camera offer.");
+      updateCameraStatus(newCamId, 'error_offer_processing');
       return;
     }
 
     if (!parsedRawOffer || !parsedRawOffer.sdp || parsedRawOffer.sdp.type !== 'offer') {
       setError("Invalid offer structure in Camera Offer JSON.");
       setStatus("Invalid camera offer structure.");
+      updateCameraStatus(newCamId, 'error_offer_processing');
       return;
     }
 
@@ -439,16 +445,24 @@ function ControllerScreen() {
 
     try {
       const pc = new RTCPeerConnection();
+      console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Created new RTCPeerConnection.`);
       cameraPcRefs.current[newCamId] = pc;
       const collectedIceCandidates = [];
-      
+
       pc.onicecandidate = event => {
-        if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
+        if (event.candidate) {
+          console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] ICE candidate gathered:`, event.candidate.toJSON());
+          collectedIceCandidates.push(event.candidate.toJSON());
+        } else {
+          console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] All ICE candidates have been gathered.`);
+        }
       };
 
       pc.onicegatheringstatechange = () => {
+        console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] ICE gathering state changed: ${pc.iceGatheringState}`);
         if (pc.iceGatheringState === 'complete') {
           if (!pc.localDescription) {
+            console.error(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Failed to generate answer: No local description.`);
             setError("Failed to generate answer for Camera " + newCamId + ": No local description.");
             updateCameraStatus(newCamId, 'error_answering');
             return;
@@ -460,8 +474,9 @@ function ControllerScreen() {
           };
           const answerJsonString = JSON.stringify(answer, null, 2);
           setCameraAnswer(newCamId, answerJsonString, collectedIceCandidates);
+          console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Answer created and stored:`, answer);
           updateCameraStatus(newCamId, 'answer_ready');
-          setStatus("Answer generated for camera " + (getCameraById(newCamId)?.name || newCamId));
+          setStatus("Answer generated and downloaded for camera " + (getCameraById(newCamId)?.name || newCamId));
 
           // Download answer JSON file
           const blob = new Blob([answerJsonString], { type: 'application/json' });
@@ -473,11 +488,11 @@ function ControllerScreen() {
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
-          setStatus("Answer generated and downloaded for camera " + (getCameraById(newCamId)?.name || newCamId));
         }
       };
 
       pc.ontrack = event => {
+        console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Received track: kind=${event.track.kind}, id=${event.track.id}, stream_id=${event.streams[0]?.id}`);
         if (event.track.kind === 'video') {
           const stream = new MediaStream([event.track]);
           cameraStreamRefs.current[newCamId] = stream;
@@ -490,18 +505,26 @@ function ControllerScreen() {
 
       pc.onconnectionstatechange = () => {
         const camState = pc.connectionState;
+        console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Connection state changed: ${camState}`);
         updateCameraStatus(newCamId, "pc_state_" + camState);
         if (camState === 'failed') {
+          console.error(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Connection failed.`);
           setError("Camera " + (getCameraById(newCamId)?.name || newCamId) + " connection failed.");
         } else if (camState === 'connected') {
+          console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Connection successful.`);
           // 接続成功時に接続情報を隠す
           setExpandedCameraJson(null);
         }
       };
 
+      pc.onsignalingstatechange = () => {
+        console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Signaling state changed: ${pc.signalingState}`);
+      };
+
       let sdpOffer = parsedRawOffer.sdp;
       if (typeof sdpOffer === 'string') {
         try {
+          console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Offer SDP is a string, attempting to parse.`);
           sdpOffer = JSON.parse(sdpOffer);
         } catch (e) {
           console.error(CTRL_LOG_PREFIX + " Error parsing SDP string:", e);
@@ -511,21 +534,28 @@ function ControllerScreen() {
         }
       }
 
-      console.log(CTRL_LOG_PREFIX + " Setting remote description with offer");
+      console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Setting remote description with offer:`, sdpOffer);
       await pc.setRemoteDescription(new RTCSessionDescription(sdpOffer));
 
-      for (const candidate of (parsedRawOffer.iceCandidates || [])) {
-        if (candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(e => {
-              console.warn(CTRL_LOG_PREFIX + " Error adding cam ICE:", e);
-              setError("Error adding ICE candidate: " + e.message);
-            });
+      if (parsedRawOffer.iceCandidates && Array.isArray(parsedRawOffer.iceCandidates)) {
+        console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Adding ${parsedRawOffer.iceCandidates.length} ICE candidates.`);
+        for (const candidate of (parsedRawOffer.iceCandidates || [])) {
+          if (candidate) {
+            console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Adding ICE candidate:`, candidate);
+            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+              .catch(e => {
+                console.warn(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Error adding ICE candidate:`, e);
+                setError("Error adding ICE candidate: " + e.message);
+              });
+          }
         }
+      } else {
+        console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] No ICE candidates provided in offer.`);
       }
 
+      console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Creating answer...`);
       const localAnswer = await pc.createAnswer();
-      console.log(CTRL_LOG_PREFIX + " Setting local description with answer");
+      console.log(CTRL_LOG_PREFIX + ` [CamID: ${newCamId}] Setting local description with answer:`, localAnswer);
       await pc.setLocalDescription(localAnswer);
     } catch (err) {
       console.error(CTRL_LOG_PREFIX + " Error in camera offer processing:", err);
@@ -543,7 +573,7 @@ function ControllerScreen() {
       return;
     }
 
-    console.log(CTRL_LOG_PREFIX + "Preparing offer for monitor " + monitorId);
+    console.log(CTRL_LOG_PREFIX + " Preparing offer for monitor " + monitorId);
     setStatus("Preparing offer for " + monitor.name);
     setError('');
     setCurrentMonitorIdForOffer(monitorId);
@@ -551,8 +581,12 @@ function ControllerScreen() {
     updateMonitorStatus(monitorId, 'controller_preparing_offer');
 
     try {
-      if (monitorPcRefs.current[monitorId]) monitorPcRefs.current[monitorId].close();
+      if (monitorPcRefs.current[monitorId]) {
+        console.log(CTRL_LOG_PREFIX + ` Closing existing PeerConnection for monitor ${monitorId} before creating new one.`);
+        monitorPcRefs.current[monitorId].close();
+      }
       const pc = new RTCPeerConnection();
+      console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Created new RTCPeerConnection.`);
       monitorPcRefs.current[monitorId] = pc;
       const collectedIceCandidates = [];
 
@@ -566,12 +600,19 @@ function ControllerScreen() {
       });
 
       pc.onicecandidate = event => {
-        if (event.candidate) collectedIceCandidates.push(event.candidate.toJSON());
+        if (event.candidate) {
+          console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] ICE candidate gathered:`, event.candidate.toJSON());
+          collectedIceCandidates.push(event.candidate.toJSON());
+        } else {
+          console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] All ICE candidates have been gathered.`);
+        }
       };
 
       pc.onicegatheringstatechange = () => {
+        console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] ICE gathering state changed: ${pc.iceGatheringState}`);
         if (pc.iceGatheringState === 'complete') {
           if (!pc.localDescription) {
+            console.error(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Failed to generate offer: No local description.`);
             setError("Failed to generate offer for Monitor " + monitor.name + ": No local desc.");
             updateMonitorStatus(monitorId, 'error_generating_offer');
             return;
@@ -583,34 +624,31 @@ function ControllerScreen() {
             iceCandidates: collectedIceCandidates,
           }, null, 2);
           setOfferForMonitor(monitorId, offerForMonitorJson, collectedIceCandidates, offerSdp);
+          console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Offer created and stored:`, { sdp: offerSdp, ice: collectedIceCandidates });
           updateMonitorStatus(monitorId, 'offer_ready_for_monitor');
-          setStatus("Offer for " + monitor.name + " ready.");
-
-          // Download offer JSON file for monitor
-          const blob = new Blob([offerForMonitorJson], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `controller_offer_for_${monitor.name}.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
           setStatus("Offer for " + monitor.name + " ready and downloaded.");
         }
       };
 
       pc.onconnectionstatechange = () => {
         const monState = pc.connectionState;
+        console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Connection state changed: ${monState}`);
         updateMonitorStatus(monitorId, "pc_state_" + monState);
         if (monState === 'failed') {
+          console.error(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Connection failed.`);
           setError("Monitor " + monitor.name + " connection failed.");
         } else if (monState === 'connected') {
+          console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Connection successful.`);
           setStatus("Monitor " + monitor.name + " connected. Use camera selector to choose source.");
         }
       };
 
+      pc.onsignalingstatechange = () => {
+        console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Signaling state changed: ${pc.signalingState}`);
+      };
+
       const localOffer = await pc.createOffer();
+      console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Created local offer, setting local description.`);
       await pc.setLocalDescription(localOffer);
 
     } catch (err) {
@@ -622,21 +660,25 @@ function ControllerScreen() {
   const handleAcceptAnswerFromMonitor = useCallback(async (monitorId) => {
     const monitor = getMonitorById(monitorId);
     let answerInputToProcess = answerFromMonitorInput;
+    console.log(CTRL_LOG_PREFIX + ` Attempting to accept answer for monitor ${monitorId}`);
 
     if (monitorAnswerFile && currentMonitorIdForAnswer === monitorId) {
       try {
         const fileContent = await monitorAnswerFile.text();
         setMonitorAnswerFile(null); // Reset file input state first
         const answerFileNameInput = document.getElementById(`monitorAnswerFileInput-${monitorId}`);
-        if (answerFileNameInput) answerFileNameInput.value = ''; 
+        if (answerFileNameInput) answerFileNameInput.value = '';
 
         if (!fileContent) { // Check if file content is empty
+          console.error(CTRL_LOG_PREFIX + ` Uploaded answer file for monitor ${monitorId} is empty.`);
           setError(`Uploaded answer file for ${monitor ? monitor.name : monitorId} is empty.`);
           setStatus("Failed to process empty answer file.");
           return;
         }
         answerInputToProcess = fileContent;
+        console.log(CTRL_LOG_PREFIX + " Read answer from file:", answerInputToProcess.substring(0, 150) + "...");
       } catch (e) {
+        console.error(CTRL_LOG_PREFIX + ` Error reading answer file for monitor ${monitorId}:`, e);
         setError("Error reading monitor answer file: " + e.message);
         setStatus("Failed to read monitor answer file.");
         setMonitorAnswerFile(null); // Clear file state on error too
@@ -647,12 +689,14 @@ function ControllerScreen() {
     }
 
     if (!monitor) {
+      console.error(CTRL_LOG_PREFIX + ` Monitor with ID ${monitorId} not found when accepting answer.`);
       setError(`Monitor with ID ${monitorId} not found.`);
       setStatus("Error processing monitor answer.");
       return;
     }
 
     if (!answerInputToProcess) {
+      console.error(CTRL_LOG_PREFIX + ` Answer input is missing for monitor ${monitor.name}.`);
       setError(`Answer input or file is missing for ${monitor.name}. Please provide the answer text or upload a valid file.`);
       setStatus("Error processing monitor answer.");
       return;
@@ -661,7 +705,9 @@ function ControllerScreen() {
     let answerPayload;
     try {
       answerPayload = JSON.parse(answerInputToProcess);
+      console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Parsed answer payload:`, answerPayload);
     } catch (e) {
+      console.error(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Failed to parse answer JSON:`, e);
       setError("Invalid JSON in Monitor Answer: " + e.message);
       return;
     }
@@ -684,6 +730,7 @@ function ControllerScreen() {
       // Re-parse to ensure we use the (potentially file-loaded) answerInputToProcess
       answerPayload = JSON.parse(answerInputToProcess);
       if (!answerPayload || !answerPayload.sdp || answerPayload.sdp.type !== 'answer') {
+        console.error(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Invalid answer structure from monitor.`);
         setError("Invalid answer structure from " + monitor.name);
         updateMonitorStatus(monitorId, 'error_invalid_answer');
         return;
@@ -692,38 +739,46 @@ function ControllerScreen() {
       let sdpAnswer = answerPayload.sdp;
       if (typeof sdpAnswer === 'string') {
         try {
+          console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Answer SDP is a string, attempting to parse.`);
           sdpAnswer = JSON.parse(sdpAnswer);
         } catch (e) {
-          console.error(CTRL_LOG_PREFIX + " Error parsing answer SDP string:", e);
+          console.error(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Error parsing answer SDP string:`, e);
           setError("Invalid SDP format in answer");
           updateMonitorStatus(monitorId, 'error_processing_answer');
           return;
         }
       }
 
-      console.log(CTRL_LOG_PREFIX + " Setting remote description with answer");
+      console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Setting remote description with answer:`, sdpAnswer);
       await pc.setRemoteDescription(new RTCSessionDescription(sdpAnswer));
 
-      for (const candidate of (answerPayload.iceCandidates || [])) {
-        if (candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(e => {
-              console.warn(CTRL_LOG_PREFIX + " Error adding mon ICE:", e);
-              setError("Error adding ICE candidate: " + e.message);
-            });
+      if (answerPayload.iceCandidates && Array.isArray(answerPayload.iceCandidates)) {
+        console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Adding ${answerPayload.iceCandidates.length} ICE candidates.`);
+        for (const candidate of (answerPayload.iceCandidates || [])) {
+          if (candidate) {
+            console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Adding ICE candidate:`, candidate);
+            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+              .catch(e => {
+                console.warn(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Error adding ICE candidate:`, e);
+                setError("Error adding ICE candidate: " + e.message);
+              });
+          }
         }
+      } else {
+        console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] No ICE candidates provided in answer.`);
       }
 
-      setMonitorAnswer(monitorId, answerFromMonitorInput, answerPayload.iceCandidates || [], answerPayload.sdp);
+      setMonitorAnswer(monitorId, answerInputToProcess, answerPayload.iceCandidates || [], answerPayload.sdp);
       updateMonitorStatus(monitorId, 'connected_to_controller');
-      
+
       // 接続が成功したら、自動的にNo Signal画面を設定
+      console.log(CTRL_LOG_PREFIX + ` [MonID: ${monitorId}] Connection process complete, setting to No Signal screen.`);
       await switchMonitorCamera(monitorId, null);
       setStatus("Monitor " + monitor.name + " connected. No Signal screen is set.");
 
       // 接続成功時に接続情報を隠す
       setExpandedMonitorJson(null);
-      
+
     } catch (err) {
       console.error(CTRL_LOG_PREFIX + " Error processing answer for monitor " + monitorId, err);
       setError(`Failed to process answer for ${monitor.name}: ${err.message}`);
@@ -820,13 +875,13 @@ function ControllerScreen() {
   }, [setCurrentMonitorIdForAnswer, setMonitorAnswerFile, setAnswerFromMonitorInput]);
 
   const renderCameraItem = (cam) => (
-    <CameraItem 
-      key={cam.id} 
-      cam={cam} 
-      selectedCameraId={selectedCameraId} 
-      onSelectCamera={selectCamera} 
-      onToggleExpand={onToggleExpandCamera} 
-      onRemoveCamera={handleRemoveCamera} 
+    <CameraItem
+      key={cam.id}
+      cam={cam}
+      selectedCameraId={selectedCameraId}
+      onSelectCamera={selectCamera}
+      onToggleExpand={onToggleExpandCamera}
+      onRemoveCamera={handleRemoveCamera}
       expandedCameraJson={expandedCameraJson}
       copyToClipboard={copyToClipboardWrapper}
       getCameraById={getCameraById}
@@ -889,7 +944,7 @@ function ControllerScreen() {
             モニターを削除
           </button>
         </div>
-        
+
         {expandedMonitorJson === mon.id && (
           <div className="expanded-content">
             {mon.offerJsonFromController && (
@@ -924,9 +979,9 @@ function ControllerScreen() {
                 />
                 <div className="file-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
                   <label htmlFor={`monitorAnswerFileInput-${mon.id}`} className="label">または応答ファイルをアップロード:</label>
-                  <input 
+                  <input
                     id={`monitorAnswerFileInput-${mon.id}`}
-                    type="file" 
+                    type="file"
                     accept=".json"
                     onChange={(e) => handleMonitorAnswerFileChange(mon.id, e.target.files[0])}
                     className="input"
@@ -935,7 +990,7 @@ function ControllerScreen() {
                 </div>
                 <button
                   onClick={() => handleAcceptAnswerFromMonitor(mon.id)}
-                  disabled={!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController) }
+                  disabled={!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController)}
                   className={`button ${(!isProcessingAnswer || (currentMonitorIdForOffer !== mon.id && !mon.offerJsonFromController)) ? 'button-disabled' : ''}`}
                 >
                   応答を処理
@@ -960,13 +1015,13 @@ function ControllerScreen() {
       <div className="main-content-area">
         <section className="card">
           <div className="preview-tabs">
-            <button 
+            <button
               className={`tab-button ${previewTab === 'cameras' ? 'active' : ''}`}
               onClick={() => setPreviewTab('cameras')}
             >
               カメラのプレビュー
             </button>
-            <button 
+            <button
               className={`tab-button ${previewTab === 'monitors' ? 'active' : ''}`}
               onClick={() => setPreviewTab('monitors')}
             >
@@ -975,28 +1030,28 @@ function ControllerScreen() {
           </div>
 
           {previewTab === 'cameras' && (
-          <div className="video-grid">
-            {cameras
-              .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
-              .map(cam => (
-                <div key={cam.id} className="video-container">
-                  <h3 className="video-title">{cam.name}</h3>
-                  <video
-                    id={`camera-preview-${cam.id}`}
-                    ref={element => {
-                      if (element && cameraStreamRefs.current[cam.id]) {
-                        element.srcObject = cameraStreamRefs.current[cam.id];
-                      }
-                    }}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="video"
-                  />
+            <div className="video-grid">
+              {cameras
+                .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
+                .map(cam => (
+                  <div key={cam.id} className="video-container">
+                    <h3 className="video-title">{cam.name}</h3>
+                    <video
+                      id={`camera-preview-${cam.id}`}
+                      ref={element => {
+                        if (element && cameraStreamRefs.current[cam.id]) {
+                          element.srcObject = cameraStreamRefs.current[cam.id];
+                        }
+                      }}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="video"
+                    />
                     <span className="status-badge" data-status={cam.status}>{cam.status}</span>
-                </div>
-              ))}
-            {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').length === 0 && (
+                  </div>
+                ))}
+              {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').length === 0 && (
                 <p className="preview-message">プレビューできるカメラがありません。</p>
               )}
             </div>
@@ -1050,8 +1105,8 @@ function ControllerScreen() {
                 })}
               {monitors.filter(mon => mon.status === 'connected_to_controller' || mon.status.startsWith('pc_state_connected')).length === 0 && (
                 <p className="preview-message">プレビュー可能なモニターがありません。</p>
-            )}
-          </div>
+              )}
+            </div>
           )}
         </section>
 
@@ -1069,11 +1124,11 @@ function ControllerScreen() {
               />
               <div className="file-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
                 <label htmlFor="cameraOfferFileInput" className="label">またはオファーファイルをアップロード:</label>
-                <input 
+                <input
                   id="cameraOfferFileInput"
-                  type="file" 
+                  type="file"
                   accept=".json"
-                  onChange={(e) => setCameraOfferFile(e.target.files[0])} 
+                  onChange={(e) => setCameraOfferFile(e.target.files[0])}
                   className="input"
                 />
               </div>

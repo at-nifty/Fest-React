@@ -156,6 +156,7 @@ function CameraScreen() {
 
   useEffect(() => {
     return () => {
+      console.log(CAM_LOG_PREFIX + " Unloading component, stopping media stream and closing peer connection.");
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
@@ -167,6 +168,7 @@ function CameraScreen() {
   }, [localStream]);
 
   const startLocalMedia = async (deviceId) => {
+    console.log(CAM_LOG_PREFIX + ` Starting local media. Source: ${sourceType}, DeviceID: ${deviceId || 'any'}`);
     setStatus('メディアを起動中...');
     setError('');
 
@@ -216,6 +218,7 @@ function CameraScreen() {
 
       // 既存のPeerConnectionがある場合は、新しいストリームを追加
       if (pcRef.current && pcRef.current.connectionState === 'connected') {
+        console.log(CAM_LOG_PREFIX + " PeerConnection already connected. Replacing tracks.");
         const senders = pcRef.current.getSenders();
         const videoTrack = stream.getVideoTracks()[0];
         const audioTrack = stream.getAudioTracks()[0];
@@ -223,6 +226,7 @@ function CameraScreen() {
         if (videoTrack) {
           const videoSender = senders.find(sender => sender.track?.kind === 'video');
           if (videoSender) {
+            console.log(CAM_LOG_PREFIX + " Replacing video track.");
             await videoSender.replaceTrack(videoTrack);
           }
         }
@@ -230,6 +234,7 @@ function CameraScreen() {
         if (audioTrack) {
           const audioSender = senders.find(sender => sender.track?.kind === 'audio');
           if (audioSender) {
+            console.log(CAM_LOG_PREFIX + " Replacing audio track.");
             await audioSender.replaceTrack(audioTrack);
           }
         }
@@ -238,6 +243,7 @@ function CameraScreen() {
       setStatus(sourceType === 'screen' ? '画面共有の準備完了' : 'カメラの起動が完了しました。');
 
     } catch (err) {
+      console.error(CAM_LOG_PREFIX + " Error starting local media:", err);
       if (err.name === 'NotAllowedError') {
         setError("画面共有が拒否されました");
       } else {
@@ -260,22 +266,33 @@ function CameraScreen() {
       setError("ローカルメディアが開始されていません。先にカメラを開始してください。");
       return;
     }
+    console.log(CAM_LOG_PREFIX + " Initializing PeerConnection and creating offer.");
     setStatus("カメラ: PeerConnectionを初期化中...");
     setError('');
     collectedIceCandidatesRef.current = [];
-    if(pcRef.current) pcRef.current.close();
+    if(pcRef.current) {
+      console.log(CAM_LOG_PREFIX + " Closing existing PeerConnection before creating new one.");
+      pcRef.current.close();
+    }
 
     const pc = new RTCPeerConnection({ iceTransportPolicy: 'all' });
+    console.log(CAM_LOG_PREFIX + " Created new RTCPeerConnection.");
     pcRef.current = pc;
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) collectedIceCandidatesRef.current.push(event.candidate.toJSON());
+      if (event.candidate) {
+        console.log(CAM_LOG_PREFIX + " ICE candidate gathered:", event.candidate.toJSON());
+        collectedIceCandidatesRef.current.push(event.candidate.toJSON());
+      } else {
+        console.log(CAM_LOG_PREFIX + " All ICE candidates have been gathered.");
+      }
     };
 
     pc.onicegatheringstatechange = () => {
-      setStatus("カメラ ICE収集状態: " + pc.iceGatheringState);
+      console.log(CAM_LOG_PREFIX + " ICE gathering state changed: " + pc.iceGatheringState);
       if (pc.iceGatheringState === 'complete') {
         if (!pc.localDescription) {
+          console.error(CAM_LOG_PREFIX + " Error: Local description missing during offer creation.");
           setError("カメラ: エラー: オファー作成中にローカル記述が見つかりません。");
           return;
         }
@@ -287,7 +304,8 @@ function CameraScreen() {
         };
         const offerJsonString = JSON.stringify(offerSignalPayload, null, 2);
         setOfferSignal(offerJsonString);
-        setStatus('カメラ: オファーが作成されました。コントローラーにコピーしてください。');
+        console.log(CAM_LOG_PREFIX + " Offer created and stored:", offerSignalPayload);
+        setStatus('カメラ: オファーが作成され、ファイルとしてダウンロードされました。');
 
         // Download offer JSON file
         const blob = new Blob([offerJsonString], { type: 'application/json' });
@@ -299,28 +317,42 @@ function CameraScreen() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        setStatus('カメラ: オファーが作成され、ファイルとしてダウンロードされました。');
       }
     };
 
     pc.onconnectionstatechange = () => {
-      setStatus("カメラ-コントローラー接続状態: " + pc.connectionState);
-      if (pc.connectionState === 'failed') setError("カメラ: コントローラーへの接続が失敗しました。");
-      else if (pc.connectionState === "connected") {
+      const state = pc.connectionState;
+      console.log(CAM_LOG_PREFIX + " Connection state changed: " + state);
+      setStatus("カメラ-コントローラー接続状態: " + state);
+      if (state === 'failed') {
+        console.error(CAM_LOG_PREFIX + " Connection FAILED.");
+        setError("カメラ: コントローラーへの接続が失敗しました。");
+      } else if (state === "connected") {
+        console.log(CAM_LOG_PREFIX + " Connection successful!");
         setStatus("カメラ: コントローラーに正常に接続されました！");
         setError('');
+        // 接続が成功したら接続情報を非表示にする
+        setOfferSignal('');
+        setAnswerSignalInput('');
       }
     };
     
-    pc.oniceconnectionstatechange = () => setStatus("カメラ-コントローラー ICE状態: " + pc.iceConnectionState);
-    pc.onsignalingstatechange = () => console.log(CAM_LOG_PREFIX + "シグナリング状態: " + pc.signalingState);
+    pc.oniceconnectionstatechange = () => {
+      console.log(CAM_LOG_PREFIX + " ICE connection state changed: " + pc.iceConnectionState);
+      setStatus("カメラ-コントローラー ICE状態: " + pc.iceConnectionState);
+    }
+    pc.onsignalingstatechange = () => console.log(CAM_LOG_PREFIX + " Signaling state changed: " + pc.signalingState);
 
+    console.log(CAM_LOG_PREFIX + " Adding local stream tracks to PeerConnection.");
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
     try {
+      console.log(CAM_LOG_PREFIX + " Creating offer...");
       const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+      console.log(CAM_LOG_PREFIX + " Setting local description with offer:", offer);
       await pc.setLocalDescription(offer);
     } catch (err) {
+      console.error(CAM_LOG_PREFIX + " Error creating offer:", err);
       setError("カメラ: オファーエラー: " + err.toString());
       setStatus('カメラ: オファーの作成に失敗しました。');
     }
@@ -338,10 +370,12 @@ function CameraScreen() {
     if (controllerAnswerFile) {
       try {
         answerInputToProcess = await controllerAnswerFile.text();
+        console.log(CAM_LOG_PREFIX + " Read answer from file:", answerInputToProcess.substring(0, 150) + "...");
         setControllerAnswerFile(null); // Reset file input
         const answerFileNameInput = document.getElementById('controllerAnswerFileInput');
         if (answerFileNameInput) answerFileNameInput.value = ''; // Reset file input display
       } catch (e) {
+        console.error(CAM_LOG_PREFIX + " Error reading controller answer file:", e);
         setError("Error reading controller answer file: " + e.message);
         setStatus("Failed to read controller answer file.");
         return;
@@ -352,22 +386,33 @@ function CameraScreen() {
       setError("カメラ: コントローラーからの応答が空です。");
       return;
     }
+    console.log(CAM_LOG_PREFIX + " Processing answer from controller.");
     setStatus("カメラ: コントローラーからの応答を処理中...");
     setError('');
     try {
       const answerPayload = JSON.parse(answerInputToProcess);
+      console.log(CAM_LOG_PREFIX + " Parsed answer payload:", answerPayload);
       if (!answerPayload || typeof answerPayload.sdp !== 'object' || answerPayload.sdp.type !== 'answer') {
+        console.error(CAM_LOG_PREFIX + " Invalid answer signal received.");
         setError("カメラ: 無効な応答信号を受信しました。");
         return;
       }
+      console.log(CAM_LOG_PREFIX + " Setting remote description with answer:", answerPayload.sdp);
       await pc.setRemoteDescription(new RTCSessionDescription(answerPayload.sdp));
       if (answerPayload.iceCandidates && Array.isArray(answerPayload.iceCandidates)) {
+        console.log(CAM_LOG_PREFIX + ` Adding ${answerPayload.iceCandidates.length} ICE candidates.`);
         for (const candidate of answerPayload.iceCandidates) {
-          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("ICE候補の追加エラー: "+e));
+          if (candidate) {
+            console.log(CAM_LOG_PREFIX + " Adding ICE candidate:", candidate);
+            await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("ICE候補の追加エラー: "+e));
+          }
         }
+      } else {
+        console.log(CAM_LOG_PREFIX + " No ICE candidates provided in answer.");
       }
       setStatus("カメラ: 応答を処理しました。接続中...");
     } catch (err) {
+      console.error(CAM_LOG_PREFIX + " Error processing answer:", err);
       setError("カメラ: 応答処理エラー: " + err.toString());
       setStatus('カメラ: 応答の処理に失敗しました。');
     }

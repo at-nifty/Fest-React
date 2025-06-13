@@ -151,6 +151,7 @@ function MonitorScreen() {
 
   useEffect(() => {
     return () => {
+      console.log(MON_LOG_PREFIX + " Unloading component, closing peer connection.");
       if (pcRef.current) {
         pcRef.current.close();
         pcRef.current = null;
@@ -193,10 +194,12 @@ function MonitorScreen() {
     if (controllerOfferFile) {
       try {
         offerInputToProcess = await controllerOfferFile.text();
+        console.log(MON_LOG_PREFIX + " Read offer from file:", offerInputToProcess.substring(0, 150) + "...");
         setControllerOfferFile(null); // Reset file input
         const offerFileNameInput = document.getElementById('controllerOfferFileInput');
         if (offerFileNameInput) offerFileNameInput.value = ''; // Reset file input display
       } catch (e) {
+        console.error(MON_LOG_PREFIX + " Error reading controller offer file:", e);
         setError("Monitor: Error reading controller offer file: " + e.message);
         setStatus("Monitor: Failed to read offer file.");
         return;
@@ -207,6 +210,7 @@ function MonitorScreen() {
       setError("Monitor: Controller Offer input or file is empty.");
       return;
     }
+    console.log(MON_LOG_PREFIX + " Processing offer from controller.");
     setStatus("Monitor: Processing Offer...");
     setError('');
     collectedIceCandidatesRef.current = [];
@@ -215,31 +219,45 @@ function MonitorScreen() {
     let offerPayload;
     try {
       offerPayload = JSON.parse(offerInputToProcess);
+      console.log(MON_LOG_PREFIX + " Parsed offer payload:", offerPayload);
     } catch (e) {
+      console.error(MON_LOG_PREFIX + " Failed to parse offer JSON:", e);
       setError("Monitor: Invalid JSON in Controller Offer: " + e.message);
       setStatus("Monitor: Failed to parse offer.");
       return;
     }
 
     if (!offerPayload || typeof offerPayload.sdp !== 'object' || offerPayload.sdp.type !== 'offer') {
+      console.error(MON_LOG_PREFIX + " Invalid offer signal structure.");
       setError("Monitor: Invalid Controller Offer signal structure.");
       setStatus("Monitor: Invalid offer structure.");
       return;
     }
 
     try {
-      if (pcRef.current) pcRef.current.close();
+      if (pcRef.current) {
+        console.log(MON_LOG_PREFIX + " Closing existing PeerConnection before creating new one.");
+        pcRef.current.close();
+      }
       const pc = new RTCPeerConnection({}); 
+      console.log(MON_LOG_PREFIX + " Created new RTCPeerConnection.");
       pcRef.current = pc;
 
       pc.onicecandidate = (event) => {
-        if (event.candidate) collectedIceCandidatesRef.current.push(event.candidate.toJSON());
+        if (event.candidate) {
+          console.log(MON_LOG_PREFIX + " ICE candidate gathered:", event.candidate.toJSON());
+          collectedIceCandidatesRef.current.push(event.candidate.toJSON());
+        } else {
+          console.log(MON_LOG_PREFIX + " All ICE candidates have been gathered.");
+        }
       };
 
       pc.onicegatheringstatechange = () => {
+        console.log(MON_LOG_PREFIX + " ICE gathering state changed: " + pc.iceGatheringState);
         setStatus("Monitor ICE Gathering: " + pc.iceGatheringState);
         if (pc.iceGatheringState === 'complete') {
           if (!pc.localDescription) {
+            console.error(MON_LOG_PREFIX + " Error: Local description missing during answer creation.");
             setError("Monitor: Error: Local description missing during answer creation.");
             return;
           }
@@ -251,7 +269,8 @@ function MonitorScreen() {
           };
           const answerJsonString = JSON.stringify(answerPayload, null, 2);
           setMonitorAnswerJson(answerJsonString);
-          setStatus('Monitor: Answer created. Copy to Controller.');
+          console.log(MON_LOG_PREFIX + " Answer created and stored:", answerPayload);
+          setStatus('Monitor: Answer created and downloaded.');
 
           // Download answer JSON file
           const blob = new Blob([answerJsonString], { type: 'application/json' });
@@ -263,16 +282,18 @@ function MonitorScreen() {
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
-          setStatus('Monitor: Answer created and downloaded.');
         }
       };
 
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState;
+        console.log(MON_LOG_PREFIX + " Connection state changed: " + state);
         setStatus("Monitor Connection: " + state);
         if (state === 'failed') {
+          console.error(MON_LOG_PREFIX + " Connection FAILED.");
           setError("Monitor: Connection FAILED.");
         } else if (state === 'connected') {
+          console.log(MON_LOG_PREFIX + " Connection successful!");
           setStatus("Monitor: Connected! Stream should be playing.");
           setError('');
           // 接続が成功したら接続情報を非表示にする
@@ -281,10 +302,14 @@ function MonitorScreen() {
         }
       };
       
-      pc.oniceconnectionstatechange = () => setStatus("Monitor ICE: " + pc.iceConnectionState);
-      pc.onsignalingstatechange = () => console.log(MON_LOG_PREFIX + "Signaling state: " + pc.signalingState);
+      pc.oniceconnectionstatechange = () => {
+        console.log(MON_LOG_PREFIX + " ICE connection state changed: " + pc.iceConnectionState);
+        setStatus("Monitor ICE: " + pc.iceConnectionState);
+      }
+      pc.onsignalingstatechange = () => console.log(MON_LOG_PREFIX + " Signaling state changed: " + pc.signalingState);
 
       pc.ontrack = (event) => {
+        console.log(MON_LOG_PREFIX + ` Received track: kind=${event.track.kind}, id=${event.track.id}, stream_id=${event.streams[0]?.id}`);
         if (event.streams && event.streams[0]) {
           remoteStreamRef.current = event.streams[0];
           if (videoRef.current) videoRef.current.srcObject = event.streams[0];
@@ -296,21 +321,32 @@ function MonitorScreen() {
         setStatus("Monitor: Stream received.");
       };
 
+      console.log(MON_LOG_PREFIX + " Adding transceivers for video and audio.");
       pc.addTransceiver('video', { direction: 'recvonly' });
       pc.addTransceiver('audio', { direction: 'recvonly' });
 
+      console.log(MON_LOG_PREFIX + " Setting remote description with offer:", offerPayload.sdp);
       await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.sdp));
       
       if (offerPayload.iceCandidates && Array.isArray(offerPayload.iceCandidates)) {
+        console.log(MON_LOG_PREFIX + ` Adding ${offerPayload.iceCandidates.length} ICE candidates.`);
         for (const candidate of offerPayload.iceCandidates) {
-          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("Error adding remote ICE: " + e));
+          if (candidate) {
+            console.log(MON_LOG_PREFIX + " Adding ICE candidate:", candidate);
+            await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn("Error adding remote ICE: " + e));
+          }
         }
+      } else {
+        console.log(MON_LOG_PREFIX + " No ICE candidates provided in offer.");
       }
 
+      console.log(MON_LOG_PREFIX + " Creating answer...");
       const answer = await pc.createAnswer();
+      console.log(MON_LOG_PREFIX + " Setting local description with answer:", answer);
       await pc.setLocalDescription(answer);
 
     } catch (err) {
+      console.error(MON_LOG_PREFIX + " Error in offer/answer process:", err);
       setError("Monitor: Offer/Answer Error: " + err.toString());
       setStatus('Monitor: Failed to process Controller offer.');
     }
