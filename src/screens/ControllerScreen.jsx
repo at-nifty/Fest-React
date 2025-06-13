@@ -240,6 +240,8 @@ function ControllerScreen() {
   const [error, setError] = useState('');
 
   const [previewTab, setPreviewTab] = useState('cameras'); // 'cameras' or 'monitors'
+  const [fullscreenPreviewId, setFullscreenPreviewId] = useState(null); // For fullscreen video
+  const previewVideoContainerRefs = useRef({});
 
   const createEmptyMediaStream = useCallback(() => {
     const canvas = document.createElement('canvas');
@@ -402,6 +404,30 @@ function ControllerScreen() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setFullscreenPreviewId(null);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = (id) => {
+    const container = previewVideoContainerRefs.current[id];
+    if (!container) return;
+
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch(err => {
+        setError(`Fullscreen error: ${err.message}`);
+      });
+      setFullscreenPreviewId(id);
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   // Existing handlers with updated monitor offer handling
   const handleProcessNewCameraOffer = async () => {
@@ -1057,30 +1083,29 @@ function ControllerScreen() {
           </div>
 
           {previewTab === 'cameras' && (
-            <div className="video-grid">
-              {cameras
-                .filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected')
-                .map(cam => (
-                  <div key={cam.id} className="video-container">
-                    <h3 className="video-title">{cam.name}</h3>
-                    <video
-                      id={`camera-preview-${cam.id}`}
-                      ref={element => {
-                        if (element && cameraStreamRefs.current[cam.id]) {
-                          element.srcObject = cameraStreamRefs.current[cam.id];
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="video"
-                    />
-                    <span className="status-badge" data-status={cam.status}>{cam.status}</span>
+            <div className="preview-grid">
+              {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').map(cam => {
+                const stream = cameraStreamRefs.current[cam.id];
+                return (
+                  <div 
+                    key={cam.id} 
+                    className="video-container-wrapper"
+                    ref={el => previewVideoContainerRefs.current[cam.id] = el}
+                    onClick={() => toggleFullscreen(cam.id)}
+                  >
+                    <div className="video-container">
+                      <video
+                        autoPlay
+                        playsInline
+                        muted
+                        className="video"
+                        srcObject={stream}
+                      />
+                      <div className="video-title">{cam.name}</div>
+                    </div>
                   </div>
-                ))}
-              {cameras.filter(cam => cam.status === 'connected_streaming' || cam.status === 'pc_state_connected').length === 0 && (
-                <p className="preview-message">プレビューできるカメラがありません。</p>
-              )}
+                );
+              })}
             </div>
           )}
 
